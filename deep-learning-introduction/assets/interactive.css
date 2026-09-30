@@ -347,3 +347,28 @@ svg .solid{fill:var(--c);stroke:none}
   .order-grid{grid-template-columns:1fr;gap:6px}
   .pl-tok{font-size:.58rem}
 }
+
+/* ---------- 数式（TeX 記法を KaTeX で描画） ---------- */
+.katex{font-size:1.08em}
+.mb{display:block;overflow-x:auto;overflow-y:hidden;margin:12px 0;padding:2px 0;text-align:center}
+.mb .katex-display{margin:.35em 0}
+/* KaTeX を読み込めなかったときは TeX のソースをそのまま見せる */
+.m:not([data-tex]){font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.85em;background:var(--bg);padding:1px 4px;border-radius:4px}
+.mb:not([data-tex]){font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.82rem;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 12px;text-align:left;white-space:pre-wrap}
+.math-box{margin:26px 0;padding:14px 20px 4px;border:1px solid var(--line);border-left:3px solid var(--violet);border-radius:0 10px 10px 0;background:color-mix(in srgb,var(--violet) 4%,var(--paper))}
+.math-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.math-kicker{font-size:.66rem;letter-spacing:.14em;font-weight:750;color:var(--violet);background:color-mix(in srgb,var(--violet) 13%,var(--paper));border-radius:99px;padding:1px 10px}
+.math-box p{margin:10px 0}
+.math-box .note{font-size:.8rem}
+.eq-row .m{white-space:nowrap}
+.eq-row .katex{font-size:1em}
+@media (max-width:640px){.eq-row .m{white-space:normal}.math-box{padding:12px 14px 4px}}
+/* 横に並べた複数の式。狭い画面では縦に並ぶ */
+.mb-row{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;column-gap:2.4em;margin:12px 0}
+.mb-row>.mb{margin:0;max-width:100%}
+@media (max-width:480px){.mb .katex{font-size:.94em}.mb-row{row-gap:2px}}
+.mb-row>.mb{padding:2px 4px}
+/* 1 本の式を途中で折り返せるようにしたもの（PC では 1 行に見える） */
+.mb-row.cont{column-gap:.3em}
+.mb-row.cont{column-gap:.15em}
+.mb-row.cont>.mb{padding:2px 2px}

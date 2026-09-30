@@ -39,9 +39,10 @@
     const g = s('g', { class: 'fade vchip', style: { opacity: 0 } }, s('rect', { x: rx, y: y - 13, width: w, height: 21, rx: 6 }), s('text', { x: rx + 7, y: y + 2, class: 'lbl-mono' }, text));
     parent.append(g); return g;
   }
+  /** 式パネル。tex は TeX 記法（KaTeX で描画される） */
   function eqPanel(host, rows) {
-    return rows.map(([f, desc, c]) => {
-      const el = h('div', { class: 'eq-row ' + (c || '') }, h('span', { class: 'swatch' }), h('code', { html: f }), h('span', { class: 'eq-desc', text: desc }));
+    return rows.map(([tex, desc, c]) => {
+      const el = h('div', { class: 'eq-row ' + (c || '') }, h('span', { class: 'swatch' }), h('span', { class: 'm', text: tex }), h('span', { class: 'eq-desc', text: desc }));
       host.append(el); return el;
     });
   }
@@ -372,12 +373,12 @@
     };
     host.append(svg);
     const EQ = eqPanel(eqHost, [
-      ['f<sub>t</sub> = σ(W<sub>f</sub>·[h<sub>t−1</sub>, x<sub>t</sub>] + b<sub>f</sub>)', '忘却ゲート：古い記憶をどれだけ残すか', 'c-orange'],
-      ['i<sub>t</sub> = σ(W<sub>i</sub>·[h<sub>t−1</sub>, x<sub>t</sub>] + b<sub>i</sub>)', '入力ゲート：新しい情報をどれだけ書き込むか', 'c-blue'],
-      ['g̃<sub>t</sub> = tanh(W<sub>g</sub>·[h<sub>t−1</sub>, x<sub>t</sub>] + b<sub>g</sub>)', '書き込む内容の候補', 'c-yellow'],
-      ['C<sub>t</sub> = f<sub>t</sub> ⊙ C<sub>t−1</sub> + i<sub>t</sub> ⊙ g̃<sub>t</sub>', 'セル状態の更新（掛け算と足し算だけ）', 'c-aqua'],
-      ['o<sub>t</sub> = σ(W<sub>o</sub>·[h<sub>t−1</sub>, x<sub>t</sub>] + b<sub>o</sub>)', '出力ゲート：記憶のどこを出力に使うか', 'c-magenta'],
-      ['h<sub>t</sub> = o<sub>t</sub> ⊙ tanh(C<sub>t</sub>)', '出力（次の時刻への短期記憶）', 'c-violet']
+      ['f_t = \\sigma(W_f [h_{t-1}, x_t] + b_f)', '忘却ゲート：古い記憶をどれだけ残すか', 'c-orange'],
+      ['i_t = \\sigma(W_i [h_{t-1}, x_t] + b_i)', '入力ゲート：新しい情報をどれだけ書き込むか', 'c-blue'],
+      ['\\tilde{g}_t = \\tanh(W_g [h_{t-1}, x_t] + b_g)', '書き込む内容の候補', 'c-yellow'],
+      ['C_t = f_t \\odot C_{t-1} + i_t \\odot \\tilde{g}_t', 'セル状態の更新（掛け算と足し算だけ）', 'c-aqua'],
+      ['o_t = \\sigma(W_o [h_{t-1}, x_t] + b_o)', '出力ゲート：記憶のどこを出力に使うか', 'c-magenta'],
+      ['h_t = o_t \\odot \\tanh(C_t)', '出力（次の時刻への短期記憶）', 'c-violet']
     ]);
     const STEPS = [
       { on: [], gates: [], chips: [], eq: [], cap: '上の太い線が<b>セル状態 C</b>（長期記憶のベルトコンベア）、下の線が<b>隠れ状態 h</b>（短期記憶・出力）です。σ のゲートは 0〜1 の値を出し、掛け算（×）で「どれだけ通すか」を決めます。' },
@@ -487,10 +488,10 @@
     };
     host.append(svg);
     const EQ = eqPanel(eqHost, [
-      ['z<sub>t</sub> = σ(W<sub>z</sub>·[h<sub>t−1</sub>, x<sub>t</sub>])', '更新ゲート：新しい候補をどれだけ取り込むか', 'c-blue'],
-      ['r<sub>t</sub> = σ(W<sub>r</sub>·[h<sub>t−1</sub>, x<sub>t</sub>])', 'リセットゲート：候補を作るとき過去をどれだけ使うか', 'c-orange'],
-      ['h̃<sub>t</sub> = tanh(W·[r<sub>t</sub> ⊙ h<sub>t−1</sub>, x<sub>t</sub>])', '新しい記憶の候補', 'c-yellow'],
-      ['h<sub>t</sub> = (1 − z<sub>t</sub>) ⊙ h<sub>t−1</sub> + z<sub>t</sub> ⊙ h̃<sub>t</sub>', '古い記憶と候補を z で混ぜる', 'c-violet']
+      ['z_t = \\sigma(W_z [h_{t-1}, x_t])', '更新ゲート：新しい候補をどれだけ取り込むか', 'c-blue'],
+      ['r_t = \\sigma(W_r [h_{t-1}, x_t])', 'リセットゲート：候補を作るとき過去をどれだけ使うか', 'c-orange'],
+      ['\\tilde{h}_t = \\tanh(W [r_t \\odot h_{t-1}, x_t])', '新しい記憶の候補', 'c-yellow'],
+      ['h_t = (1 - z_t) \\odot h_{t-1} + z_t \\odot \\tilde{h}_t', '古い記憶と候補を z で混ぜる', 'c-violet']
     ]);
     const STEPS = [
       { on: [], gates: [], chips: [], eq: [], cap: 'GRU には<b>セル状態がなく</b>、上の線（隠れ状態 h）が記憶の本線です。ゲートは<b>更新 z</b> と<b>リセット r</b> の 2 つだけです。' },

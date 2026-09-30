@@ -7,6 +7,8 @@
 <link rel="icon" href="data:,">
 <title>RNN・LSTM・GRU | 深層学習入門</title>
 <meta name="description" content="第6章：系列データを扱う RNN・LSTM・GRU の仕組みを、時間方向の展開・勾配消失・ゲート機構・Seq2Seq のアニメーションで学ぶ。">
+<link rel="stylesheet" id="katex-css" href="https://cdn.jsdelivr.net/npm/katex@0.18.9/dist/katex.min.css" integrity="sha384-lPx0C4zIUZLpveABMwOFcFeGZwsvKBJfhJ85FN1PYOV7xApBcFMhcAEMVKF8loOI" crossorigin="anonymous">
+<script async id="katex-js" src="https://cdn.jsdelivr.net/npm/katex@0.18.9/dist/katex.min.js" integrity="sha384-19KE2cFb3U+RUWmyhBz7aLOGDG8WrRC6hE3oY/HTZZlAAVWYTdmvLC//+TIV3zUx" crossorigin="anonymous"></script>
 <link rel="stylesheet" href="assets/interactive.css">
 <script defer src="assets/interactive.js"></script>
 <script defer src="assets/ch6-rnn.js"></script>
@@ -55,8 +57,17 @@
 
 <h3 id="s6-1-2">RNN の基本構造と隠れ状態</h3>
 <p><strong>RNN（Recurrent Neural Network、再帰型ニューラルネットワーク）</strong> は、<strong>隠れ状態（hidden state）</strong> という「これまでの記憶」を持ち回ることでこれを解決します。出力した記憶を、次の時刻の入力として自分自身に戻す（再帰）のです。1 ステップの計算はシンプルです。</p>
-<div class="eq">h<sub>t</sub> = tanh( W<sub>x</sub> · x<sub>t</sub> ＋ W<sub>h</sub> · h<sub>t−1</sub> ＋ b )　　← 新しい入力 ＋ 前の記憶<br>y<sub>t</sub> = W<sub>y</sub> · h<sub>t</sub> ＋ b<sub>y</sub></div>
-<p>ポイントは、<code>W_x</code>, <code>W_h</code>, <code>W_y</code> が <strong>全ステップで共通</strong> であることです。CNN のフィルタ共有と同じ発想で、これにより任意の長さの系列を同じパラメータで処理できます。</p>
+<div class="mb-row"><div class="mb">h_t = \tanh\!\Big( \underbrace{W_x\, x_t}_{\text{新しい入力}} + \underbrace{W_h\, h_{t-1}}_{\text{前の記憶}} + b \Big)</div><div class="mb">y_t = W_y\, h_t + b_y</div></div>
+<p>ポイントは、<span class="m">W_x</span>, <span class="m">W_h</span>, <span class="m">W_y</span> が <strong>全ステップで共通</strong> であることです。CNN のフィルタ共有と同じ発想で、これにより任意の長さの系列を同じパラメータで処理できます。</p>
+
+<aside class="math-box" aria-label="数式で見る：記号の形と、展開したときの形">
+<div class="math-head"><span class="math-kicker">数式で見る</span><b>記号の形（次元）と、展開したときの形</b></div>
+<p>入力の次元を <span class="m">D</span>、隠れ状態の次元を <span class="m">H</span> とすると、各記号の形は次のとおりです。tanh は要素ごとに作用し、値を <span class="m">(-1, 1)</span> の範囲に収めます。</p>
+<div class="mb-row"><div class="mb">x_t \in \mathbb{R}^{D}, \quad h_t \in \mathbb{R}^{H}, \quad b \in \mathbb{R}^{H}</div><div class="mb">W_x \in \mathbb{R}^{H \times D}, \quad W_h \in \mathbb{R}^{H \times H}</div></div>
+<p>この式を 3 ステップ分展開すると、同じ <span class="m">W_h</span> が入れ子になって何度も現れます（見やすさのため <span class="m">b</span> は省略）。</p>
+<div class="mb">h_3 = \tanh\!\Big( W_x x_3 + W_h \tanh\!\big( W_x x_2 + W_h \tanh( W_x x_1 + W_h h_0 ) \big) \Big)</div>
+<p>この「同じ行列の繰り返し」が、次節で扱う勾配消失・勾配爆発の原因になります。</p>
+</aside>
 
 <h3 id="s6-1-3">時間方向への展開</h3>
 <p>再帰構造は、時間方向に引き伸ばす（<strong>unroll</strong> する）と普通のネットワークとして見えます。下のアニメーションで、ループの形をした RNN を展開し、"I love deep learning" を 1 語ずつ読ませてみましょう。</p>
@@ -67,6 +78,15 @@
 </div>
 
 <p>展開してしまえば、学習は第3章の誤差逆伝播法と同じです。ただし時間方向にさかのぼって勾配を伝えるため、特に <strong>BPTT（Backpropagation Through Time、通時的誤差逆伝播）</strong> と呼ばれます。</p>
+
+<aside class="math-box" aria-label="数式で見る：BPTT">
+<div class="math-head"><span class="math-kicker">数式で見る</span><b>BPTT：勾配は時間をさかのぼって掛け算される</b></div>
+<p>損失は各時刻の損失の和 <span class="m">L = \sum_{t=1}^{T} L_t</span> です。時刻 <span class="m">t</span> の損失がそれより前の時刻 <span class="m">k</span> の隠れ状態に与える影響は、連鎖律によりヤコビアンの積になります。</p>
+<div class="mb">\frac{\partial L_t}{\partial h_k} = \frac{\partial L_t}{\partial h_t}\; \frac{\partial h_t}{\partial h_{t-1}}\, \frac{\partial h_{t-1}}{\partial h_{t-2}} \cdots \frac{\partial h_{k+1}}{\partial h_k}</div>
+<p>重み <span class="m">W_h</span> は全時刻で共有されているので、その勾配は各時刻からの寄与をすべて足し合わせたものです。<span class="m">\partial^{+}</span> は、1 つ前の隠れ状態を定数とみなした「その時刻だけ」の微分を表します。</p>
+<div class="mb">\frac{\partial L}{\partial W_h} = \sum_{t=1}^{T} \sum_{k=1}^{t} \frac{\partial L_t}{\partial h_k}\, \frac{\partial^{+} h_k}{\partial W_h}</div>
+<p>遠い過去（<span class="m">t - k</span> が大きい）ほど、掛け算されるヤコビアンの数が増えます。</p>
+</aside>
 <p>RNN は入出力の対応づけ方でいくつかのパターンに分かれます。</p>
 
 <div class="demo" id="d-patterns" aria-label="RNN の入出力パターン">
@@ -84,10 +104,8 @@
   <div class="demo-stage"></div>
 </div>
 
-<pre><code>50 ステップさかのぼると、およそ W を 50 回掛けることになる
-
-W の影響が 0.9 倍相当なら:  0.9^50 ≒ 0.005   → 勾配消失（学習が進まない）
-W の影響が 1.1 倍相当なら:  1.1^50 ≒ 117     → 勾配爆発（値が発散する）</code></pre>
+<p>50 ステップさかのぼると、およそ <span class="m">W_h</span> を 50 回掛けることになります。その影響が 1 ステップあたり 0.9 倍相当なら勾配は消え、1.1 倍相当なら発散します。</p>
+<div class="mb-row"><div class="mb">0.9^{50} \approx 0.005 \;\;(\text{勾配消失：学習が進まない})</div><div class="mb">1.1^{50} \approx 117 \;\;(\text{勾配爆発：値が発散する})</div></div>
 <ul>
 <li><strong>勾配消失（vanishing gradient）</strong>：遠い過去に向かう勾配がほぼ 0 になり、そこのパラメータが更新されない</li>
 <li><strong>勾配爆発（exploding gradient）</strong>：勾配が発散し、損失が NaN になる</li>
@@ -95,6 +113,17 @@ W の影響が 1.1 倍相当なら:  1.1^50 ≒ 117     → 勾配爆発（値�
 <p>勾配爆発は、<strong>勾配クリッピング</strong>（勾配のノルムに上限を設ける）で比較的簡単に対処できます。上の図の「クリッピング」をオンにすると、上限で頭打ちになる様子を確認できます。</p>
 <pre><code class="python">torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)</code></pre>
 <p>厄介なのは勾配消失のほうです。値が静かに 0 に近づくだけなので、エラーも出ず、ただ「精度が上がらない」という形で現れます。</p>
+
+<aside class="math-box" aria-label="数式で見る：なぜ指数的に消えたり爆発したりするのか">
+<div class="math-head"><span class="math-kicker">数式で見る</span><b>なぜ指数的に消えたり爆発したりするのか</b></div>
+<p><span class="m">h_j = \tanh(a_j)</span>、<span class="m">a_j = W_x x_j + W_h h_{j-1} + b</span> とおきます。<span class="m">\tanh'(a) = 1 - \tanh^2(a)</span> なので、1 ステップ分のヤコビアンは次のとおりです（<span class="m">h_j^2</span> は要素ごとの 2 乗）。</p>
+<div class="mb">\frac{\partial h_j}{\partial h_{j-1}} = \operatorname{diag}\!\left(1 - h_j^{2}\right) W_h</div>
+<p><span class="m">0 \lt 1 - h_j^2 \le 1</span> なので、行列の大きさを最大特異値 <span class="m">\sigma_{\max}</span>（行列が最大で何倍に引き伸ばすか）で測ると、次の不等式が成り立ちます。</p>
+<div class="mb-row cont"><div class="mb">\left\| \frac{\partial h_t}{\partial h_k} \right\| \le \prod_{j=k+1}^{t} \left\| \operatorname{diag}\!\left(1 - h_j^2\right) \right\| \, \| W_h \|</div><div class="mb">\le \sigma_{\max}(W_h)^{\,t-k}</div></div>
+<p><span class="m">\sigma_{\max}(W_h) \lt 1</span> なら、さかのぼる距離 <span class="m">t - k</span> に対して<strong>指数的に 0 へ</strong>近づきます（勾配消失）。逆に <span class="m">\sigma_{\max}(W_h) \gt 1</span> だと、積が指数的に大きくなる<strong>可能性</strong>が生じます（勾配爆発）。上の図の倍率 <span class="m">w</span> は、この積を 1 次元に単純化したものです。</p>
+<p>勾配クリッピングは、全パラメータの勾配をまとめたベクトル <span class="m">g</span> のノルムが上限 <span class="m">\tau</span>（<code>max_norm</code>）を超えたときだけ、向きを保ったまま長さを縮めます。</p>
+<div class="mb">g \leftarrow g \cdot \min\!\left( 1,\ \frac{\tau}{\| g \|} \right)</div>
+</aside>
 
 <h3 id="s6-2-2">長期依存関係の学習が難しい理由</h3>
 <p>勾配消失の実害は、<strong>長期依存関係（long-term dependency）</strong> が学べないことです。次の文で空欄を埋めるには、50 単語前の「フランス」を覚えておく必要があります。</p>
@@ -143,6 +172,16 @@ W の影響が 1.1 倍相当なら:  1.1^50 ≒ 117     → 勾配爆発（値�
   <div class="demo-stage"></div>
 </div>
 
+<aside class="math-box" aria-label="数式で見る：LSTM で勾配が消えにくい理由">
+<div class="math-head"><span class="math-kicker">数式で見る</span><b>LSTM で勾配が消えにくい理由</b></div>
+<p>ゲートの <span class="m">\sigma</span> はシグモイド関数で、出力は必ず 0 と 1 の間に入ります。<span class="m">\odot</span> は要素ごとの積、<span class="m">[h_{t-1}, x_t]</span> は 2 つのベクトルの連結です。</p>
+<div class="mb-row"><div class="mb">\sigma(a) = \frac{1}{1 + e^{-a}} \in (0, 1)</div><div class="mb">C_t = f_t \odot C_{t-1} + i_t \odot \tilde{g}_t</div></div>
+<p>セル状態をまっすぐたどる経路だけに注目すると、1 ステップ分の微分は忘却ゲートの値そのものです。</p>
+<div class="mb-row"><div class="mb">\frac{\partial C_t}{\partial C_{t-1}} = \operatorname{diag}(f_t)</div><div class="mb">\Longrightarrow\quad \frac{\partial C_t}{\partial C_k} = \operatorname{diag}\!\left( f_t \odot f_{t-1} \odot \cdots \odot f_{k+1} \right)</div></div>
+<p>素の RNN の <span class="m">\operatorname{diag}(1 - h_j^2)\, W_h</span> と違い、この経路には重み行列も tanh の微分も掛かりません。忘却ゲートが 1 に近い値を学習すれば、積はほぼ 1 のまま保たれ、遠い過去まで勾配が届きます。</p>
+<p class="note">※ ゲート自体も <span class="m">h_{t-1}</span> を通じて過去に依存するため、厳密には他の経路を通る勾配もあります。長期の勾配を主に運ぶのが、このセル状態の直通経路です。</p>
+</aside>
+
 <p>PyTorch では 1 行で使えます。入出力の <strong>形状</strong> を押さえるのが実務上の要点です。</p>
 <pre><code class="python">import torch
 import torch.nn as nn
@@ -190,7 +229,15 @@ class SentimentModel(nn.Module):
   </div>
 </div>
 
-<p class="note">※ 文献によって z と (1 − z) の役割が逆の表記もあります（PyTorch の公式ドキュメントは <code>h_t = (1 − z)·n + z·h_{t−1}</code> で、z が 1 に近いほど古い記憶を残す向き）。どちらも「混ぜる割合をゲートで決める」という仕組みは同じです。</p>
+<p class="note">※ 文献によって <span class="m">z</span> と <span class="m">1 - z</span> の役割が逆の表記もあります（PyTorch の公式ドキュメントは <span class="m">h_t = (1 - z_t) \odot n_t + z_t \odot h_{t-1}</span> で、<span class="m">z</span> が 1 に近いほど古い記憶を残す向き）。どちらも「混ぜる割合をゲートで決める」という仕組みは同じです。</p>
+
+<aside class="math-box" aria-label="数式で見る：GRU の更新は内分">
+<div class="math-head"><span class="math-kicker">数式で見る</span><b>GRU の更新は「内分」</b></div>
+<div class="mb-row"><div class="mb">h_t = (1 - z_t) \odot h_{t-1} + z_t \odot \tilde{h}_t</div><div class="mb">0 \lt z_t \lt 1</div></div>
+<p>要素ごとに見ると、<span class="m">h_t</span> は古い記憶 <span class="m">h_{t-1}</span> と新しい候補 <span class="m">\tilde{h}_t</span> を結ぶ線分を <span class="m">z_t : (1 - z_t)</span> に内分した点、つまり重み付き平均です。上の図の値なら次のとおりです。</p>
+<div class="mb">h_t = 0.3 \times 0.8 + 0.7 \times (-0.74) \approx -0.28</div>
+<p>また <span class="m">\partial h_t / \partial h_{t-1}</span> には <span class="m">\operatorname{diag}(1 - z_t)</span> という直通の項が含まれます。<span class="m">z_t</span> が 0 に近ければ記憶も勾配もそのまま通り、LSTM の忘却ゲート <span class="m">f_t</span> と同じ役割を果たします。</p>
+</aside>
 
 <p>LSTM と GRU の違いをまとめると次のとおりです。パラメータ数は PyTorch の <code>input_size=64, hidden_size=128</code>（1 層）で比べています。</p>
 
@@ -198,6 +245,10 @@ class SentimentModel(nn.Module):
   <div class="demo-head"><span class="demo-kicker">グラフ</span><h4 class="demo-title">RNN・GRU・LSTM のパラメータ数（入力 64・隠れ 128）</h4></div>
   <div class="demo-stage"></div>
 </div>
+
+<p>入力の次元を <span class="m">D</span>、隠れ状態の次元を <span class="m">H</span> とすると、1 層あたりのパラメータ数は次のとおりです。GRU・LSTM は、ゲートと候補の数（3 組・4 組）だけ RNN と同じ大きさの重みを持ちます。</p>
+<div class="mb-row"><div class="mb">P_{\text{RNN}} = H(D + H) + 2H</div><div class="mb">P_{\text{GRU}} = 3\, P_{\text{RNN}}</div><div class="mb">P_{\text{LSTM}} = 4\, P_{\text{RNN}}</div></div>
+<p class="note">バイアスが <span class="m">2H</span> なのは、PyTorch が入力側と隠れ状態側で別々のバイアスを持つためです。<span class="m">D = 64,\ H = 128</span> なら <span class="m">P_{\text{RNN}} = 128 \times 192 + 256 = 24{,}832</span> です。</p>
 
 <table>
 <thead><tr><th></th><th>LSTM</th><th>GRU</th></tr></thead>
@@ -223,6 +274,11 @@ out, h_n = gru(x)       # 戻り値が 2 つ（セル状態がない点が LSTM 
 <pre><code class="python">bilstm = nn.LSTM(64, 128, batch_first=True, bidirectional=True)
 out, (h_n, c_n) = bilstm(torch.randn(32, 20, 64))
 print(out.shape)    # torch.Size([32, 20, 256])  ← 128 * 2（順+逆）</code></pre>
+<aside class="math-box" aria-label="数式で見る：双方向 RNN の式">
+<div class="math-head"><span class="math-kicker">数式で見る</span><b>双方向 RNN の式</b></div>
+<div class="mb-row"><div class="mb">\overrightarrow{h}_t = f\!\left( \overrightarrow{h}_{t-1},\, x_t \right)</div><div class="mb">\overleftarrow{h}_t = f'\!\left( \overleftarrow{h}_{t+1},\, x_t \right)</div><div class="mb">h_t = \left[\, \overrightarrow{h}_t \,;\, \overleftarrow{h}_t \,\right] \in \mathbb{R}^{2H}</div></div>
+<p><span class="m">f</span> と <span class="m">f'</span> は別々のパラメータを持つ RNN（LSTM）で、<span class="m">[\,\cdot\,;\,\cdot\,]</span> はベクトルの連結です。<span class="m">\overleftarrow{h}_t</span> は <span class="m">x_t, x_{t+1}, \dots, x_T</span> に依存するため、最後の入力 <span class="m">x_T</span> が届くまで計算を始められません。これがリアルタイム処理で使えない理由です。</p>
+</aside>
 <div class="callout warn"><b>制約</b>双方向にするには系列全体が事前に揃っている必要があります。リアルタイム音声認識のように、未来の入力がまだ存在しないタスクには使えません（上の図の「リアルタイム」で確認できます）。</div>
 
 <h2 id="s6-4">6.4 応用と限界</h2>
@@ -239,6 +295,15 @@ print(out.shape)    # torch.Size([32, 20, 256])  ← 128 * 2（順+逆）</code>
 _, (h, c) = encoder_lstm(src_emb)          # 入力文を読み切る
 out, _ = decoder_lstm(tgt_emb, (h, c))     # その記憶から出力を生成
 logits = fc(out)                            # 各ステップで語彙上の確率分布</code></pre>
+<aside class="math-box" aria-label="数式で見る：Seq2Seq が計算している確率">
+<div class="math-head"><span class="math-kicker">数式で見る</span><b>Seq2Seq が計算している確率</b></div>
+<p>Encoder は入力 <span class="m">x_1, \dots, x_T</span> を読み、最後の隠れ状態を文脈ベクトル <span class="m">c = h^{\text{enc}}_T</span> とします。Decoder は、出力文全体の確率を「1 語ずつの条件付き確率」の積に分解して扱います（<span class="m">y_{\lt t}</span> は時刻 <span class="m">t</span> より前に出力した単語）。</p>
+<div class="mb">P(y_1, \dots, y_{T'} \mid x_1, \dots, x_T) = \prod_{t=1}^{T'} P\!\left( y_t \mid y_{\lt t},\; c \right)</div>
+<p>学習では、正解の訳文に対する負の対数尤度（各時刻の交差エントロピーの和）を最小化します。このとき直前の単語には、モデルの出力ではなく正解の単語を入力するのが一般的です（teacher forcing）。</p>
+<div class="mb">L = -\sum_{t=1}^{T'} \log P\!\left( y_t \mid y_{\lt t},\; c \right)</div>
+<p>入力の長さ <span class="m">T</span> がいくら大きくても、<span class="m">c</span> の次元は固定です。これが次に見る「固定長ボトルネック」の数式上の意味です。</p>
+</aside>
+
 <p>主な応用先：</p>
 <table>
 <thead><tr><th>分野</th><th>タスク</th></tr></thead>
@@ -259,14 +324,14 @@ logits = fc(out)                            # 各ステップで語彙上の確�
 </div>
 
 <p>実際、入力文が長くなるほど翻訳精度が落ちることが知られていました。</p>
-<p><strong>壁2：逐次処理ゆえの並列化の壁</strong> — こちらがより深刻です。RNN は <code>h_t</code> を計算するのに <code>h_(t−1)</code> が必要なため、<strong>原理的に時間方向の並列計算ができません</strong>。</p>
+<p><strong>壁2：逐次処理ゆえの並列化の壁</strong> — こちらがより深刻です。RNN は <span class="m">h_t</span> を計算するのに <span class="m">h_{t-1}</span> が必要なため、<strong>原理的に時間方向の並列計算ができません</strong>。</p>
 
 <div class="demo" id="d-parallel" aria-label="RNN の逐次処理と並列処理の速さの比較">
   <div class="demo-head"><span class="demo-kicker">アニメーション</span><h4 class="demo-title">GPU のコアが何千あっても、RNN は 1 つずつ</h4></div>
   <div class="demo-stage"></div>
 </div>
 
-<p>GPU の性能は「大量の計算を同時に行う」ことで発揮されます。RNN はその強みを活かせないため、モデルを大きくしても、データを増やしても、学習時間が線形に伸びてしまいます。</p>
+<p>GPU の性能は「大量の計算を同時に行う」ことで発揮されます。RNN はその強みを活かせないため、モデルを大きくしても、データを増やしても、学習時間が線形に伸びてしまいます。系列長を <span class="m">T</span> とすると、RNN の 1 層は依存の鎖 <span class="m">h_1 \to h_2 \to \cdots \to h_T</span> に沿って <span class="m">O(T)</span> 回の逐次ステップを必要とします。畳み込みや Transformer の 1 層は全位置を同時に計算できるので、逐次ステップ数は <span class="m">O(1)</span> です。</p>
 <div class="callout tip"><b>実務での位置づけ</b>この「並列化できない」という制約こそが、2017 年の Transformer 登場の直接的な動機でした。Transformer は再帰構造を捨て、系列の全要素を一度に処理することで、GPU をフルに使った大規模学習を可能にしました。現在の LLM が存在するのはこのためです。<strong>その仕組みは第7章で扱います。</strong></div>
 <p>なお RNN 系が完全に不要になったわけではありません。小規模な時系列予測や、計算資源が限られる組込み環境では、軽量な LSTM / GRU が今も現役です。</p>
 
@@ -312,7 +377,7 @@ logits = fc(out)                            # 各ステップで語彙上の確�
 <div class="exercise">
 <p><strong>4.</strong> 「RNN は GPU の性能を活かしきれない」と言われます。その理由を、CNN との違いに触れて説明してください。</p>
 <details><summary>解答例を見る</summary>
-<p>RNN は h<sub>t</sub> の計算に h<sub>t−1</sub> が必要なため、時間方向に 1 ステップずつ順番に計算するしかなく、系列長に比例した回数だけ待たされる。CNN の畳み込みは各位置の計算が互いに独立しているので、全位置を同時に計算できる。GPU は大量の独立な計算を同時に行うことで性能を発揮するため、逐次依存のある RNN ではコアの大部分が遊んでしまう。</p>
+<p>RNN は <span class="m">h_t</span> の計算に <span class="m">h_{t-1}</span> が必要なため、時間方向に 1 ステップずつ順番に計算するしかなく、系列長に比例した回数だけ待たされる。CNN の畳み込みは各位置の計算が互いに独立しているので、全位置を同時に計算できる。GPU は大量の独立な計算を同時に行うことで性能を発揮するため、逐次依存のある RNN ではコアの大部分が遊んでしまう。</p>
 </details>
 </div>
 

@@ -7,6 +7,8 @@
 <link rel="icon" href="data:,">
 <title>CNN — 画像を扱う | 深層学習入門</title>
 <meta name="description" content="第5章：CNN（畳み込みニューラルネットワーク）の仕組みを、畳み込み・プーリング・データの流れ・転移学習のアニメーションで学ぶ。">
+<link rel="stylesheet" id="katex-css" href="https://cdn.jsdelivr.net/npm/katex@0.18.9/dist/katex.min.css" integrity="sha384-lPx0C4zIUZLpveABMwOFcFeGZwsvKBJfhJ85FN1PYOV7xApBcFMhcAEMVKF8loOI" crossorigin="anonymous">
+<script async id="katex-js" src="https://cdn.jsdelivr.net/npm/katex@0.18.9/dist/katex.min.js" integrity="sha384-19KE2cFb3U+RUWmyhBz7aLOGDG8WrRC6hE3oY/HTZZlAAVWYTdmvLC//+TIV3zUx" crossorigin="anonymous"></script>
 <link rel="stylesheet" href="assets/interactive.css">
 <script defer src="assets/interactive.js"></script>
 <script defer src="assets/ch5-cnn.js"></script>
@@ -88,10 +90,21 @@
 </div>
 
 <p>左上の計算を書き下すと次のとおりです（出力マスをクリックすると、その位置の計算にジャンプできます）。</p>
-<pre><code>(1*1 + 1*0 + 1*1) + (0*0 + 1*1 + 1*0) + (0*1 + 0*0 + 1*1) = 4</code></pre>
+<div class="mb-row cont"><div class="mb">Y_{0,0} = \underbrace{1\cdot 1 + 1\cdot 0 + 1\cdot 1}_{\text{1 行目}} + \underbrace{0\cdot 0 + 1\cdot 1 + 1\cdot 0}_{\text{2 行目}}</div><div class="mb">+ \underbrace{0\cdot 1 + 0\cdot 0 + 1\cdot 1}_{\text{3 行目}} = 4</div></div>
 
 <p>フィルタの値は <strong>学習で決まる重み</strong> です。人間が設計するのではなく、データから「どんなパターンを検出すると損失が下がるか」を学びます（上の図の「縦エッジ」「横エッジ」は、学習の結果として獲得されやすいフィルタの例です）。</p>
 <p>重要なのは、<strong>同じフィルタを画像全体で使い回す</strong>（<strong>重み共有</strong>）点です。3×3 のフィルタなら重みは 9 個だけ。これがパラメータ数爆発の解決策であり、同時に「画像のどこにあっても同じ特徴を検出できる」性質（<strong>位置不変性</strong>）を生みます。</p>
+
+<aside class="math-box" aria-label="数式で見る：畳み込みの定義">
+<div class="math-head"><span class="math-kicker">数式で見る</span><b>畳み込みの定義と重み共有</b></div>
+<p>入力を <span class="m">X</span>、<span class="m">k \times k</span> のフィルタを <span class="m">W</span>、バイアスを <span class="m">b</span> とすると、特徴マップの <span class="m">(i, j)</span> 成分は次の積和です（上の例は <span class="m">k = 3,\ b = 0</span>）。</p>
+<div class="mb">Y_{i,j} = \sum_{m=0}^{k-1} \sum_{n=0}^{k-1} W_{m,n}\, X_{i+m,\; j+n} + b</div>
+<p>右辺の <span class="m">W_{m,n}</span> には位置 <span class="m">(i, j)</span> が含まれていません。どの位置でも同じ重みを使う、というのが<strong>重み共有</strong>の数式上の意味です。</p>
+<p>入力を <span class="m">\delta</span> だけ平行移動する操作を <span class="m">T_\delta</span> と書くと、（画像の端の影響を除き、ストライド 1 のとき）次の関係が成り立ちます。</p>
+<div class="mb">\operatorname{Conv}(T_\delta X) = T_\delta \operatorname{Conv}(X)</div>
+<p>入力をずらすと、出力は同じだけずれるだけで、反応の強さは変わりません（<strong>平行移動等変性</strong>）。5.1 の図で、畳み込みの反応 5 が模様と一緒に移動していたのはこのためです。全結合層 <span class="m">y = Wx</span> にはこの性質がありません。</p>
+<p class="note">補足：数学の「畳み込み」はフィルタを反転させて <span class="m">\sum_{m,n} W_{m,n} X_{i-m,\, j-n}</span> と定義しますが、深層学習の実装（PyTorch の <code>conv2d</code> など）が計算しているのは反転しない<strong>相互相関</strong>です。フィルタは学習で決まるので、反転の有無は本質的な違いになりません。</p>
+</aside>
 
 <pre><code class="python">import torch
 import torch.nn.functional as F
@@ -116,8 +129,9 @@ print(F.conv2d(x, w))
 <li><strong>ストライド（stride）</strong>：フィルタを何マスずつ動かすか。大きくすると出力が小さくなります。</li>
 <li><strong>パディング（padding）</strong>：入力の周囲を 0 で埋めること。端のピクセルが使われる回数が減る問題を緩和し、出力サイズを入力と揃えられます。</li>
 </ul>
-<div class="eq">出力サイズ = (入力サイズ + 2×パディング − フィルタサイズ) / ストライド + 1<br>
-例: 入力 28, パディング 1, フィルタ 3, ストライド 1 → (28 + 2 − 3) / 1 + 1 = 28 ← サイズが保たれる</div>
+<p>入力サイズを <span class="m">N</span>、パディングを <span class="m">p</span>、フィルタサイズを <span class="m">k</span>、ストライドを <span class="m">s</span> とすると、出力サイズ <span class="m">O</span> は次の式で決まります。</p>
+<div class="mb">O = \left\lfloor \frac{N + 2p - k}{s} \right\rfloor + 1</div>
+<p><span class="m">\lfloor\ \rfloor</span> は切り捨てです（割り切れないときは、はみ出した端の部分が使われません）。例：<span class="m">N = 28,\ p = 1,\ k = 3,\ s = 1</span> なら <span class="m">(28 + 2 - 3)/1 + 1 = 28</span> で、サイズが保たれます。一般に <span class="m">s = 1</span>、<span class="m">p = (k-1)/2</span> とすると <span class="m">O = N</span> になります。ストライド <span class="m">s</span> の畳み込みは、定義式の添字を <span class="m">X_{si+m,\; sj+n}</span> に置き換えたものです。</p>
 
 <p><strong>チャネル（channel）</strong>：カラー画像は RGB の 3 チャネルを持ちます。畳み込みは全チャネルをまたいで行われ、フィルタも入力チャネル数と同じ <strong>深さ</strong> を持ちます。各チャネルの積和を <strong>足し合わせて 1 つの値</strong> にするのがポイントです。出力チャネル数は「フィルタを何種類用意するか」で決まります。</p>
 
@@ -138,6 +152,17 @@ print(y.shape)                    # torch.Size([8, 16, 28, 28])
 print(sum(p.numel() for p in conv.parameters()))   # 448</code></pre>
 <p>同じ入力に全結合層をつなぐと数百万パラメータになるところが、<strong>448 個</strong>で済みます。</p>
 
+<aside class="math-box" aria-label="数式で見る：チャネルをまたぐ畳み込みとパラメータ数">
+<div class="math-head"><span class="math-kicker">数式で見る</span><b>チャネルをまたぐ畳み込みとパラメータ数</b></div>
+<p>入力チャネル数を <span class="m">C_{\text{in}}</span>、出力チャネル数を <span class="m">C_{\text{out}}</span> とすると、出力チャネル <span class="m">c'</span> の値は、全入力チャネルの積和を合計したものです。</p>
+<div class="mb">Y_{c',\, i,\, j} = \sum_{c=1}^{C_{\text{in}}} \sum_{m=0}^{k-1} \sum_{n=0}^{k-1} W_{c',\, c,\, m,\, n}\; X_{c,\; i+m,\; j+n} + b_{c'}</div>
+<p>重み <span class="m">W</span> の形は <span class="m">C_{\text{out}} \times C_{\text{in}} \times k \times k</span>（PyTorch の <code>conv.weight.shape</code> と同じ順）、バイアスは <span class="m">C_{\text{out}}</span> 個なので、パラメータ数は次のとおりです。</p>
+<div class="mb-row cont"><div class="mb">P_{\text{conv}} = C_{\text{out}} \left( C_{\text{in}}\, k^2 + 1 \right)</div><div class="mb">= 16 \times \left( 3 \times 3^2 + 1 \right) = 448</div></div>
+<p>一方、224×224×3 の画像を flatten して 1000 ユニットの全結合層につなぐと、重みだけで</p>
+<div class="mb">P_{\text{fc}} = (224 \times 224 \times 3) \times 1000 \approx 1.5 \times 10^{8}</div>
+<p>です。<span class="m">P_{\text{conv}}</span> の式には画像の縦横サイズが現れません。画像がどれだけ大きくても、畳み込み層のパラメータ数は変わらないのです。</p>
+</aside>
+
 <h3 id="s5-2-3">特徴マップの階層的な抽象化</h3>
 <p>畳み込み層を重ねると、検出される特徴が段階的に抽象化されていきます。ここが CNN の最も面白いところです。後ろの層ほど 1 つのニューロンが「見ている」入力の範囲（<strong>受容野</strong>）が広がり、より大きく意味のあるまとまりを捉えられるようになります。</p>
 
@@ -147,6 +172,15 @@ print(sum(p.numel() for p in conv.parameters()))   # 448</code></pre>
 </div>
 
 <p>第1章で触れた「特徴量設計の自動化」が、まさにこれです。従来の画像処理では人間がエッジ検出フィルタを設計していましたが、CNN はそれをデータから獲得します。</p>
+
+<aside class="math-box" aria-label="数式で見る：受容野の広がり方">
+<div class="math-head"><span class="math-kicker">数式で見る</span><b>受容野の広がり方</b></div>
+<p>ストライド 1 の <span class="m">k \times k</span> 畳み込みを <span class="m">L</span> 層重ねると、最後の層の 1 ニューロンが見る入力範囲（受容野）の一辺 <span class="m">R_L</span> は</p>
+<div class="mb">R_L = 1 + L\,(k - 1)</div>
+<p>です。3×3 なら 1 層で 3、2 層で 5、3 層で 7 と、層ごとに 2 ずつ広がります。ストライドやプーリングを含む場合は、それまでのストライドの積の分だけ広がり方が大きくなります（<span class="m">R_0 = 1</span>、<span class="m">k_l,\ s_l</span> は <span class="m">l</span> 層目のフィルタサイズとストライド）。</p>
+<div class="mb">R_l = R_{l-1} + (k_l - 1) \prod_{i=1}^{l-1} s_i</div>
+<p>VGG が 3×3 フィルタだけを重ねたのはこのためです。3×3 を 2 層重ねると 5×5 1 層と同じ受容野になりますが、パラメータは <span class="m">2 \times 9C^2 = 18C^2</span> で 5×5 の <span class="m">25C^2</span> より少なく、間に ReLU を挟める分だけ表現力も高くなります（入出力とも <span class="m">C</span> チャネル、バイアスは省略）。</p>
+</aside>
 
 <h2 id="s5-3">5.3 プーリング層と全体構造</h2>
 
@@ -166,6 +200,13 @@ print(sum(p.numel() for p in conv.parameters()))   # 448</code></pre>
 </ol>
 <pre><code class="python">pool = nn.MaxPool2d(kernel_size=2, stride=2)
 print(pool(torch.randn(8, 16, 28, 28)).shape)   # torch.Size([8, 16, 14, 14])</code></pre>
+<aside class="math-box" aria-label="数式で見る：プーリングの式と逆伝播">
+<div class="math-head"><span class="math-kicker">数式で見る</span><b>プーリングの式と逆伝播</b></div>
+<p>2×2・ストライド 2 のプーリングは、ブロックごとの最大値または平均です。式の中に学習するパラメータは含まれていません。</p>
+<div class="mb-row"><div class="mb">Y^{\max}_{i,j} = \max_{0 \le m,\, n \le 1} X_{2i+m,\; 2j+n}</div><div class="mb">Y^{\text{avg}}_{i,j} = \frac{1}{4} \sum_{m=0}^{1} \sum_{n=0}^{1} X_{2i+m,\; 2j+n}</div></div>
+<p>逆伝播では、最大プーリングの勾配は<strong>最大値だった位置にだけ</strong>流れます。平均プーリングでは、4 マスに <span class="m">\tfrac{1}{4}</span> ずつ均等に流れます。</p>
+<div class="mb">\frac{\partial Y^{\max}_{i,j}}{\partial X_{p,q}} = \begin{cases} 1 &amp; (p, q) \text{ が最大値の位置} \\ 0 &amp; \text{それ以外} \end{cases}</div>
+</aside>
 <div class="callout warn"><b>よくある誤解</b>最近のアーキテクチャでは、プーリングの代わりに stride=2 の畳み込みで縮小することも増えています。プーリングは必須ではありません。</div>
 
 <h3 id="s5-3-2">CNN 全体のアーキテクチャ</h3>
@@ -210,6 +251,15 @@ print(model(x).shape)     # torch.Size([64, 10])</code></pre>
 </div>
 
 <p>学習ループ・損失関数・オプティマイザは第3章と同じです。CNN だからといって学習の仕組みが変わるわけではありません。<strong>層の種類が変わっただけ</strong>です。</p>
+
+<aside class="math-box" aria-label="数式で見る：ReLU・Softmax・交差エントロピー">
+<div class="math-head"><span class="math-kicker">数式で見る</span><b>ReLU・Softmax・交差エントロピー</b></div>
+<p>ReLU は負の値を 0 にするだけの関数です。Softmax は、10 個のスコア（ロジット）<span class="m">z_0, \dots, z_9</span> を、合計が 1 になる確率に変換します。</p>
+<div class="mb-row"><div class="mb">\operatorname{ReLU}(x) = \max(0,\, x)</div><div class="mb">p_k = \operatorname{softmax}(z)_k = \frac{e^{z_k}}{\sum_{j=0}^{9} e^{z_j}}</div></div>
+<p>正解クラスを <span class="m">y</span> とすると、交差エントロピー損失と、そのロジットについての勾配は次のようになります（<span class="m">\mathbb{1}[\cdot]</span> は条件が真なら 1、偽なら 0）。</p>
+<div class="mb-row"><div class="mb">L = -\log p_y</div><div class="mb">\frac{\partial L}{\partial z_k} = p_k - \mathbb{1}[k = y]</div></div>
+<p>勾配は「予測確率 − 正解」という単純な形になります。<code>nn.CrossEntropyLoss</code> が Softmax と損失をまとめて計算するのは、この扱いやすさに加え、指数関数のオーバーフローを避けて数値的に安定させるためです。</p>
+</aside>
 <div class="callout tip"><b>実務での位置づけ</b>チャネル数は層が深くなるほど増やし（16 → 32 → 64）、空間サイズは減らしていく（28 → 14 → 7）のが定石です。「空間の情報を、意味の情報に変換していく」イメージです。</div>
 
 <h2 id="s5-4">5.4 代表的なモデルと応用</h2>
@@ -233,12 +283,21 @@ print(model(x).shape)     # torch.Size([64, 10])</code></pre>
 </tbody>
 </table>
 
-<p>特に <strong>ResNet の残差接続（skip connection）</strong> は重要です。層を深くすると、誤差逆伝播で勾配が層を通るたびに小さくなり、入力に近い層まで伝わりにくくなります。ResNet はこれに対し、「入力をそのまま出力に足す」迂回路を作りました。<code>y = x + F(x)</code> を微分すると <code>1 + F′(x)</code> となり、「1」の分だけ勾配がそのまま素通りできるのです。</p>
+<p>特に <strong>ResNet の残差接続（skip connection）</strong> は重要です。層を深くすると、誤差逆伝播で勾配が層を通るたびに小さくなり、入力に近い層まで伝わりにくくなります。ResNet はこれに対し、「入力をそのまま出力に足す」迂回路を作りました。<span class="m">y = x + F(x)</span> を微分すると <span class="m">1 + F'(x)</span> となり、「1」の分だけ勾配がそのまま素通りできるのです。</p>
 
 <div class="demo" id="d-residual" aria-label="通常の深いネットワークと残差接続での勾配の伝わり方の比較">
   <div class="demo-head"><span class="demo-kicker">アニメーション</span><h4 class="demo-title">逆伝播で勾配はどこまで届くか：通常 vs 残差接続</h4></div>
   <div class="demo-stage svg-stage hscroll" style="--minw:560px"></div>
 </div>
+
+<aside class="math-box" aria-label="数式で見る：残差接続で勾配が消えにくい理由">
+<div class="math-head"><span class="math-kicker">数式で見る</span><b>残差接続で勾配が消えにくい理由</b></div>
+<p>通常の積み重ね <span class="m">h_l = F_l(h_{l-1})</span> では、連鎖律により入力側への勾配は、各層のヤコビアン <span class="m">J_l = \partial h_l / \partial h_{l-1}</span> の積になります。</p>
+<div class="mb">\frac{\partial L}{\partial h_0} = \frac{\partial L}{\partial h_L}\, J_L\, J_{L-1} \cdots J_1</div>
+<p>各 <span class="m">J_l</span> が「小さい」と、層の数だけ掛け算されて指数的に 0 に近づきます（上の図では 1 層ごとに 0.5 倍として <span class="m">0.5^5 \approx 0.03</span>）。残差接続 <span class="m">h_l = h_{l-1} + F_l(h_{l-1})</span> では、各層のヤコビアンに恒等行列 <span class="m">I</span> が加わります。</p>
+<div class="mb">J_l = \frac{\partial h_l}{\partial h_{l-1}} = I + \frac{\partial F_l}{\partial h_{l-1}}</div>
+<p>この積を展開すると <span class="m">I \cdot I \cdots I = I</span> の項が必ず残ります。そのため <span class="m">\partial F_l / \partial h_{l-1}</span> が小さくても、勾配は入力側まで直接届きます。</p>
+</aside>
 
 <p>このアイデアは画像に限らず、第6章の LSTM のセル状態や、第7章の Transformer にも引き継がれています。</p>
 

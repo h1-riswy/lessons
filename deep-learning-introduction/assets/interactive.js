@@ -172,6 +172,28 @@
     io.observe(el);
   }
 
+  /** TeX 記法の数式を KaTeX で描画する（.m＝文中、.mb＝別行立て）。KaTeX を読み込めないときは TeX のまま表示される */
+  // KaTeX の CSS が効いているか（読み上げ用 MathML が隠れるか）を確かめる。
+  // JS だけ届いて CSS が届かないと式が二重に見えるため、そのときは TeX のまま表示する
+  function katexStyled() {
+    const probe = document.body.appendChild(h('span', { class: 'katex', style: { position: 'absolute', visibility: 'hidden' } }, h('span', { class: 'katex-mathml' })));
+    const ok = getComputedStyle(probe.firstChild).position === 'absolute';
+    probe.remove();
+    return ok;
+  }
+  function renderMath(root = document) {
+    if (!window.katex || !document.body || !katexStyled()) return;
+    root.querySelectorAll('.m:not([data-tex]), .mb:not([data-tex])').forEach(el => {
+      const tex = el.textContent;
+      try {
+        window.katex.render(tex, el, { displayMode: el.classList.contains('mb'), throwOnError: false, strict: false, output: 'htmlAndMathml' });
+        el.dataset.tex = tex;
+      } catch (e) { console.error('[math]', tex, e); }
+    });
+  }
+  // KaTeX は async で読み込むので、読み込み完了時にも描画する
+  ['katex-js', 'katex-css'].forEach(id => document.getElementById(id)?.addEventListener('load', () => renderMath()));
+
   const ICON = {
     play: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2.5v11l9-5.5z"/></svg>',
     pause: '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 2.5h3v11h-3zM9.5 2.5h3v11h-3z"/></svg>',
@@ -227,7 +249,7 @@
       cancelFlows(this.root);
       const forward = animate && !reduced() && i === prev + 1;
       const cap = this.opts.onStep(i, { prev, forward, animate: animate && !reduced(), player: this });
-      if (cap != null) this.caption.innerHTML = `<span class="step-no">${i + 1}/${this.steps}</span>` + cap;
+      if (cap != null) { this.caption.innerHTML = `<span class="step-no">${i + 1}/${this.steps}</span>` + cap; renderMath(this.caption); }
       this.range.value = i;
       this.count.textContent = `${i + 1} / ${this.steps}`;
       this.bPrev.disabled = i === 0; this.bNext.disabled = i === this.steps - 1;
@@ -303,6 +325,8 @@
       if (index > 0) pager.append(h('a', { href: chapterHref(CHAPTERS[index - 1][0]), text: '← ' + CHAPTERS[index - 1][1] }));
       if (index < CHAPTERS.length - 1) pager.append(h('a', { href: chapterHref(CHAPTERS[index + 1][0]), text: CHAPTERS[index + 1][1] + ' →' }));
     }
+    // 数式は各章のデモ（数式パネルを含む）が組み上がった後に描画する
+    setTimeout(renderMath, 0);
     // コードのハイライト
     document.querySelectorAll('pre code.python').forEach(code => { code.innerHTML = highlightPython(code.textContent); });
     // 表をスクロール可能に
@@ -348,6 +372,6 @@
     return { root, stage, options };
   }
 
-  window.DL = { h, s, clamp, fmt, ease, esc, shade, flow, cancelFlows, drawLine, countUp, flyText, segmented, slider, grid, tooltip, onVisible, Player, highlightPython, initPage, demo, reduced, CHAPTERS };
+  window.DL = { renderMath, h, s, clamp, fmt, ease, esc, shade, flow, cancelFlows, drawLine, countUp, flyText, segmented, slider, grid, tooltip, onVisible, Player, highlightPython, initPage, demo, reduced, CHAPTERS };
   document.addEventListener('DOMContentLoaded', initPage);
 })();
