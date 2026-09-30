@@ -383,6 +383,47 @@ nn.Linear(???, 10),</code></pre>
 </details>
 </div>
 
+<h2 id="s5-extra">おまけ：Stable Diffusion — CNN が絵を描く</h2>
+<p>本章の CNN は「画像を理解する」側でしたが、同じ部品は「画像を生成する」側でも活躍しています。代表例が、2022 年に公開された画像生成 AI の <strong>Stable Diffusion</strong> です。"a photo of a cat" のような文章（<strong>プロンプト</strong>）から画像を生成します。</p>
+
+<h3 id="s5-extra-1">ノイズを少しずつ取り除いて絵にする</h3>
+<p>Stable Diffusion は <strong>拡散モデル（diffusion model）</strong> の一種です。学習時は、画像にノイズを少しずつ加えて砂嵐にしていく過程を考え、その逆の「ノイズを少しだけ取り除く」操作をニューラルネットワークに学習させます。生成時は完全なノイズから出発し、この操作を何十回も繰り返して画像を浮かび上がらせます。生成 AI 全体の中での位置づけは<a href="index.html#8_llm_and_generative_ai.md">第8章</a>で扱います。</p>
+
+<div class="demo" id="d-diffusion" aria-label="Stable Diffusion がプロンプトから画像を生成する流れ">
+  <div class="demo-head"><span class="demo-kicker">アニメーション</span><h4 class="demo-title">"a photo of a cat" から画像ができるまで</h4></div>
+  <div class="demo-stage">
+    <div class="hscroll svg-stage" style="--minw:560px" id="diffusion-svg"></div>
+  </div>
+</div>
+
+<h3 id="s5-extra-2">中身は CNN の部品でできている</h3>
+<p>Stable Diffusion は、役割の違う 3 つのネットワークを組み合わせています。</p>
+<table>
+<thead><tr><th>部品</th><th>役割</th><th>中身</th></tr></thead>
+<tbody>
+<tr><td><strong>テキストエンコーダ</strong></td><td>プロンプトをベクトルの列に変換する</td><td>CLIP 系モデルのテキスト側（Transformer、第7章）</td></tr>
+<tr><td><strong>U-Net</strong></td><td>いまの状態に含まれるノイズを予測する（生成時はこれを数十回繰り返す）</td><td>畳み込みと残差接続を積み重ねた CNN。途中に Attention を挟む</td></tr>
+<tr><td><strong>VAE</strong></td><td>画像と、小さな<strong>潜在表現</strong>とを相互に変換する</td><td>畳み込みで縮小するエンコーダと、拡大して画像に戻すデコーダ（どちらも CNN）</td></tr>
+</tbody>
+</table>
+<ul>
+<li><strong>U-Net は 5.4 のセグメンテーションで登場したモデル</strong>です。前半で畳み込みとダウンサンプリングを重ねて解像度を下げながら特徴を抽出し、後半でアップサンプリングして元の解像度に戻します。同じ解像度の層どうしを<strong>スキップ接続</strong>でつなぎ、細かい位置の情報を失わないようにしています。各ブロックには 5.4 の<strong>残差接続</strong>が使われています。</li>
+<li><strong>ノイズ除去は、画像ではなく潜在空間で行います</strong>。512×512×3 = 786,432 個の値を持つ画像を、VAE のエンコーダで 64×64×4 = 16,384 個（約 1/48）の潜在表現に縮めた状態で計算するので、高速に生成できます。元になった手法が「Latent Diffusion（潜在拡散）」と呼ばれるのはこのためです。</li>
+<li><strong>プロンプトの反映</strong>には、U-Net の途中に挟んだ <strong>Cross-Attention</strong> を使います。画像の各位置が、プロンプトのどの単語に注目すべきかを計算する仕組みで、第7章で扱います。</li>
+</ul>
+
+<aside class="math-box" aria-label="数式で見る：拡散モデルが学習していること">
+<div class="math-head"><span class="math-kicker">数式で見る</span><b>U-Net が学習していること</b></div>
+<p>学習時は、きれいな潜在表現 <span class="m">z_0</span> に、時刻 <span class="m">t</span> に応じた量のノイズ <span class="m">\epsilon</span> を混ぜます。<span class="m">\bar{\alpha}_t</span> は <span class="m">t</span> が大きいほど 0 に近づく係数です。</p>
+<div class="mb">z_t = \sqrt{\bar{\alpha}_t}\, z_0 + \sqrt{1 - \bar{\alpha}_t}\, \epsilon, \qquad \epsilon \sim \mathcal{N}(0, I)</div>
+<p>U-Net <span class="m">\epsilon_\theta</span> は、混ぜられたノイズ <span class="m">\epsilon</span> そのものを当てるように学習します（<span class="m">c</span> はプロンプトの埋め込み）。損失は予測と正解の二乗誤差で、第3章の平均二乗誤差（MSE）と同じ形です。</p>
+<div class="mb">L = \mathbb{E}_{z_0,\, \epsilon,\, t} \left[ \left\| \epsilon - \epsilon_\theta(z_t,\, t,\, c) \right\|^2 \right]</div>
+<p>生成時は、予測したノイズを少しずつ引いていきます。プロンプトへの従い具合は、プロンプトあり・なし（<span class="m">\varnothing</span>）の予測の差を <span class="m">w</span> 倍に強調して調整します（classifier-free guidance。<span class="m">w</span> は 7〜8 程度がよく使われます）。</p>
+<div class="mb">\hat{\epsilon} = \epsilon_\theta(z_t, t, \varnothing) + w \left( \epsilon_\theta(z_t, t, c) - \epsilon_\theta(z_t, t, \varnothing) \right)</div>
+</aside>
+
+<div class="callout tip"><b>その後の流れ</b>Stable Diffusion 1.x・2.x・XL は U-Net を使っていますが、2024 年の Stable Diffusion 3 では U-Net の代わりに Transformer ベースのネットワーク（MMDiT）が使われています。画像生成でも「CNN から Transformer へ」という流れが起きており、その理由は第7章の内容につながります。</div>
+
 </article>
 <nav class="pager" aria-label="前後の章"></nav>
 </main>

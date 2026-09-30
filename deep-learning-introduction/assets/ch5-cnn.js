@@ -822,8 +822,124 @@
     });
   }
 
+  /* ------------------------------------------------------------------
+     おまけ：Stable Diffusion（潜在空間でのノイズ除去）
+     表示する「潜在表現」はノイズの減り方を見せるためのイメージで、実際の 4 チャネルの潜在表現ではない。
+  ------------------------------------------------------------------ */
+  /** 生成結果として見せる猫の絵（128×128 基準で描いて S に拡大縮小） */
+  function drawCat(ctx, S) {
+    ctx.save(); ctx.scale(S / 128, S / 128);
+    const poly = (pts, color) => { ctx.fillStyle = color; ctx.beginPath(); pts.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y)); ctx.closePath(); ctx.fill(); };
+    const ell = (x, y, rx, ry, color) => { ctx.fillStyle = color; ctx.beginPath(); ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); ctx.fill(); };
+    const bg = ctx.createLinearGradient(0, 0, 0, 128);
+    bg.addColorStop(0, '#9fd3f5'); bg.addColorStop(.64, '#dcf0fb'); bg.addColorStop(.64, '#8cc56b'); bg.addColorStop(1, '#5f9c45');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, 128, 128);
+    poly([[24, 60], [32, 14], [60, 40]], '#e8923f'); poly([[104, 60], [96, 14], [68, 40]], '#e8923f');
+    poly([[32, 49], [35, 26], [52, 41]], '#f5b3b8'); poly([[96, 49], [93, 26], [76, 41]], '#f5b3b8');
+    ell(64, 76, 44, 38, '#e8923f');
+    ctx.fillStyle = '#c46f25'; [[58, 40], [64, 38], [70, 40]].forEach(([x, y]) => ctx.fillRect(x - 1.5, y, 3, 13));
+    ell(64, 92, 22, 15, '#fdebd8');
+    ell(46, 70, 7, 9, '#2d2a26'); ell(82, 70, 7, 9, '#2d2a26');
+    ell(48, 67, 2.2, 2.6, '#ffffff'); ell(84, 67, 2.2, 2.6, '#ffffff');
+    poly([[59, 84], [69, 84], [64, 90]], '#d9667a');
+    ctx.strokeStyle = '#5b3b2a'; ctx.lineWidth = 1.6; ctx.lineCap = 'round'; ctx.beginPath();
+    ctx.moveTo(64, 90); ctx.quadraticCurveTo(60, 97, 54, 95); ctx.moveTo(64, 90); ctx.quadraticCurveTo(68, 97, 74, 95);
+    [[40, 88, 14, 84], [40, 93, 14, 95], [88, 88, 114, 84], [88, 93, 114, 95]].forEach(([a, b, c, e]) => { ctx.moveTo(a, b); ctx.lineTo(c, e); });
+    ctx.stroke(); ctx.restore();
+  }
+  function diffusionDemo() {
+    const d = demo('d-diffusion'); if (!d) return;
+    const host = document.getElementById('diffusion-svg');
+    const W = 720, H = 172, BY = 40, BH = 56, CY = BY + BH / 2;
+    const svg = s('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'プロンプトをテキストエンコーダで変換し、U-Net が潜在空間のノイズを繰り返し取り除き、VAE デコーダで画像に戻す流れの図' });
+    const arr = (x1, y1, x2, y2) => {
+      const dx = Math.sign(x2 - x1), dy = Math.sign(y2 - y1);
+      const line = s('path', { d: `M${x1},${y1} L${x2 - dx * 7},${y2 - dy * 7}`, class: 'wire' });
+      const head = s('path', { d: dx ? `M${x2 - dx * 9},${y2 - 5} L${x2},${y2} L${x2 - dx * 9},${y2 + 5}Z` : `M${x2 - 5},${y2 - dy * 9} L${x2},${y2} L${x2 + 5},${y2 - dy * 9}Z`, class: 'wire-head' });
+      const g = s('g', { class: 'arr c-orange' }, line, head); g.line = line; svg.append(g); return g;
+    };
+    const A = { p2t: arr(140, CY, 160, CY), t2u: arr(276, CY, 318, CY), n2u: arr(377, 122, 377, BY + BH), u2v: arr(436, CY, 474, CY), v2i: arr(578, CY, 610, CY) };
+    const loop = s('path', { d: `M352,${BY} C352,${BY - 34} 402,${BY - 34} 402,${BY - 2}`, class: 'wire' });
+    const loopG = s('g', { class: 'arr c-orange' }, loop, s('path', { d: `M397,${BY - 11} L402,${BY - 1} L407,${BY - 11}Z`, class: 'wire-head' }),
+      s('text', { x: 412, y: 16, class: 'lbl-m', style: { fontSize: '11.5px' } }, '繰り返す（図は 8 回、実際は 20〜50 回）'));
+    svg.append(loopG);
+    const box = (x, y, w, hh, title, sub, cls) => {
+      const rect = s('rect', { x, y, width: w, height: hh, rx: 9, class: 'box tint ' + cls });
+      svg.append(rect, s('text', { x: x + w / 2, y: y + hh / 2 - 3, 'text-anchor': 'middle', class: 'lbl-b', style: { fontSize: '13px' } }, title),
+        s('text', { x: x + w / 2, y: y + hh / 2 + 14, 'text-anchor': 'middle', class: 'lbl-m', style: { fontSize: '11px' } }, sub));
+      return rect;
+    };
+    const B = {
+      prompt: box(8, BY, 132, BH, 'プロンプト', '"a photo of a cat"', 'c-muted'),
+      text: box(160, BY, 116, BH, 'テキスト', 'エンコーダ（CLIP）', 'c-violet'),
+      unet: box(318, BY, 118, BH, 'U-Net（CNN）', 'ノイズを予測', 'c-blue'),
+      vae: box(474, BY, 104, BH, 'VAE（CNN）', 'デコーダ', 'c-aqua'),
+      img: box(610, BY, 102, BH, '画像', '512×512×3', 'c-orange'),
+      noise: box(318, 122, 118, 42, 'ランダムなノイズ', '潜在空間 64×64×4', 'c-muted')
+    };
+    host.append(svg);
+
+    // 絵と潜在表現（イメージ）
+    const L = 24, K = 8, T = 1000;
+    const src = document.createElement('canvas'); src.width = src.height = 256; drawCat(src.getContext('2d'), 256);
+    const small = document.createElement('canvas'); small.width = small.height = L;
+    const sctx = small.getContext('2d'); sctx.imageSmoothingQuality = 'high'; sctx.drawImage(src, 0, 0, L, L);
+    const x0 = sctx.getImageData(0, 0, L, L).data;
+    let seed = 7;
+    const rand = () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+    const gauss = () => { let u = 0; while (!u) u = rand(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * rand()); };
+    const eps = Float32Array.from({ length: L * L * 3 }, gauss);
+    const latent = h('canvas', { class: 'sd-canvas', width: L, height: L, role: 'img', 'aria-label': '潜在表現（ノイズの減り方のイメージ）' });
+    const lctx = latent.getContext('2d'), frame = lctx.createImageData(L, L);
+    const out = h('canvas', { class: 'sd-canvas smooth', width: 256, height: 256, role: 'img', 'aria-label': '生成された猫の画像' });
+    out.getContext('2d').drawImage(src, 0, 0);
+    const abar = t => { const f = u => Math.cos((u + .008) / 1.008 * Math.PI / 2) ** 2; return Math.max(0, Math.min(1, f(t / T) / f(0))); };
+    function drawLatent(t) {
+      const a = abar(t), sa = Math.sqrt(a), sn = Math.sqrt(1 - a);
+      for (let p = 0, q = 0; p < L * L; p++) {
+        for (let c = 0; c < 3; c++, q++) frame.data[p * 4 + c] = Math.max(0, Math.min(255, (sa * (x0[p * 4 + c] / 127.5 - 1) + sn * eps[q] + 1) * 127.5));
+        frame.data[p * 4 + 3] = 255;
+      }
+      lctx.putImageData(frame, 0, 0);
+      return sn;
+    }
+    const tV = h('b', { class: 'mono' }), nV = h('b', { class: 'mono' }), meter = h('span');
+    const outWrap = h('div', { class: 'sd-col sd-out' }, h('div', { class: 'sd-frame' }, out), h('div', { class: 'lbl-sm', text: 'VAE デコーダの出力（512×512 の画像）' }));
+    d.stage.append(h('div', { class: 'sd-row' },
+      h('div', { class: 'sd-col' }, latent, h('div', { class: 'lbl-sm', html: 'U-Net が扱う潜在表現<br>（64×64×4 を見える形にしたイメージ）' }),
+        h('div', { class: 'sd-meter' }, h('span', { class: 'note' }, 't = ', tV), h('div', { class: 'meter c-red', style: { flex: 1 } }, meter), h('span', { class: 'note' }, 'ノイズ ', nV))),
+      h('div', { class: 'op', text: '→' }), outWrap));
+    const tOf = k => Math.round(T * (1 - k / K));
+    new Player(d.root, {
+      steps: K + 3, interval: 1400, holds: { 0: 2600, 1: 2400, [K + 1]: 2200 },
+      onStep(i, { forward }) {
+        const k = Math.max(0, i - 1), t = i === 0 ? T : tOf(Math.min(k, K));
+        const sn = drawLatent(t);
+        latent.style.opacity = i === 0 ? .2 : 1;
+        tV.textContent = i === 0 ? '—' : t; nV.textContent = i === 0 ? '—' : Math.round(sn * 100) + '%';
+        meter.style.width = (i === 0 ? 0 : sn * 100) + '%';
+        outWrap.classList.toggle('on', i === K + 2);
+        const hot = i === 0 ? ['prompt', 'text'] : i === 1 ? ['noise', 'unet'] : i <= K + 1 ? ['unet'] : ['vae', 'img'];
+        Object.entries(B).forEach(([key, r]) => r.classList.toggle('hot', hot.includes(key)));
+        const on = i === 0 ? ['p2t'] : i === 1 ? ['n2u'] : i <= K + 1 ? ['loop'] : ['u2v', 'v2i'];
+        Object.entries(A).forEach(([key, a]) => a.classList.toggle('on', on.includes(key)));
+        loopG.classList.toggle('on', on.includes('loop'));
+        if (forward) {
+          if (i === 0) flow(A.p2t.line, { color: 'var(--orange)' });
+          else if (i === 1) flow(A.n2u.line, { color: 'var(--orange)' });
+          else if (i <= K + 1) flow(loop, { color: 'var(--orange)', dur: 600 });
+          else { flow(A.u2v.line, { color: 'var(--orange)', dur: 500 }); flow(A.v2i.line, { color: 'var(--orange)', dur: 500, delay: 500 }); }
+        }
+        if (i === 0) return 'プロンプトを<b>テキストエンコーダ</b>でベクトルの列（Stable Diffusion 1.x では最大 77 トークン × 768 次元）に変換します。これが U-Net への「指示書」になります。';
+        if (i === 1) return '潜在空間（64×64×4）に、完全にランダムなノイズ <b>z<sub>T</sub></b>（t = 1000）を用意します。ここが出発点です。毎回違うノイズから始めるので、同じプロンプトでも毎回違う絵になります。';
+        if (i === K + 2) return '最後に <b>VAE のデコーダ</b>（CNN）で、64×64×4 の潜在表現を 512×512 の画像に拡大・復元して完成です。※ 左の図はノイズの減り方を見せるためのイメージです。実際の潜在表現は 4 チャネルなので、そのままでは画像として見えません。';
+        return `ステップ ${k}/${K}（t = ${t}）：<b>U-Net</b> が、いまの潜在表現に含まれるノイズを予測し、その一部を取り除きます。プロンプトの情報は毎ステップ参照されます。` + (k === K ? '<br>ノイズを取り除き終えました。ただし、これはまだ小さな潜在表現です。' : '');
+      }
+    });
+  }
+
   document.addEventListener('DOMContentLoaded', () => {
-    [flattenDemo, paramsDemo, shiftDemo, convDemo, channelsDemo, hierarchyDemo, poolDemo, pipelineDemo, modelsDemo, residualDemo, tasksDemo, transferDemo]
+    [flattenDemo, paramsDemo, shiftDemo, convDemo, channelsDemo, hierarchyDemo, poolDemo, pipelineDemo, modelsDemo, residualDemo, tasksDemo, transferDemo, diffusionDemo]
       .forEach(fn => { try { fn(); } catch (e) { console.error(`[${fn.name}]`, e); } });
   });
 })();

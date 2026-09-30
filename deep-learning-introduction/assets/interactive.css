@@ -372,3 +372,15 @@ svg .solid{fill:var(--c);stroke:none}
 .mb-row.cont{column-gap:.3em}
 .mb-row.cont{column-gap:.15em}
 .mb-row.cont>.mb{padding:2px 2px}
+/* 5章おまけ：Stable Diffusion */
+.sd-row{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:14px 28px;margin-top:6px}
+.sd-col{display:flex;flex-direction:column;align-items:center;gap:6px;width:210px}
+.sd-canvas{width:168px;height:168px;border-radius:10px;border:1px solid var(--line);image-rendering:pixelated;background:var(--track);display:block;transition:opacity var(--dur)}
+.sd-canvas.smooth{image-rendering:auto}
+.sd-frame{width:168px;height:168px;border-radius:10px;border:1.5px dashed var(--line);display:grid;place-items:center;position:relative}
+.sd-frame::before{content:"？";position:absolute;font-size:2rem;color:var(--muted);transition:opacity .3s}
+.sd-out .sd-canvas{opacity:0;border:0;transition:opacity .6s}
+.sd-out.on .sd-canvas{opacity:1}
+.sd-out.on .sd-frame::before{opacity:0}
+.sd-meter{display:flex;align-items:center;gap:8px;width:100%}
+.sd-meter .meter{height:8px}
