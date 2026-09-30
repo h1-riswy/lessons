@@ -10,7 +10,7 @@
 <script defer src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
 <style>
 :root{--bg:#f6f7f9;--paper:#fff;--ink:#202b3c;--muted:#617084;--line:#dfe5ec;--accent:#246858;--soft:#e7f2ed}
-*{box-sizing:border-box}html{scroll-padding-top:2rem}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.9 system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}a{color:var(--accent);text-underline-offset:4px}a:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:4px}.skip{position:absolute;top:-100px;left:1rem}.skip:focus{top:1rem;background:var(--paper);z-index:10}.layout{max-width:1540px;margin:auto;display:grid;grid-template-columns:270px minmax(0,1fr) 220px;gap:36px;padding:36px 32px}.sidebar,.contents{position:sticky;top:32px;align-self:start;max-height:calc(100vh - 64px);overflow:auto}.brand{font-size:1.35rem;font-weight:750;text-decoration:none;display:block}.eyebrow{font-size:.7rem;letter-spacing:.16em;color:var(--muted);font-weight:700}.intro{font-size:.8rem;color:var(--muted);margin:4px 0 28px}.nav-title{font-size:.75rem;color:var(--muted);letter-spacing:.1em}summary{cursor:pointer;font-weight:650}.sidebar summary{margin-bottom:12px}.chapters{display:grid;gap:5px}.chapters a{display:flex;align-items:baseline;gap:12px;text-decoration:none;color:var(--muted);font-size:.85rem;line-height:1.6;padding:11px 12px;border-radius:8px}.chapters a:hover{background:var(--paper)}.chapters a[aria-current=page]{background:var(--soft);color:var(--accent);font-weight:700}.number{font:12px/1.6 ui-monospace,monospace;opacity:.7}.reading{min-width:0}.toolbar{display:flex;justify-content:space-between;gap:16px;color:var(--muted);font-size:.75rem;margin-bottom:18px}.paper{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:36px 42px}.markdown{overflow-wrap:anywhere}.markdown h1{font-size:1.85rem;line-height:1.55;letter-spacing:-.025em;margin:0 0 32px}.markdown h2{font-size:1.35rem;line-height:1.6;margin:48px 0 20px;padding-bottom:12px;border-bottom:1px solid var(--line)}.markdown h3{font-size:1.08rem;margin:30px 0 12px}.markdown p,.markdown ul,.markdown ol{margin:16px 0}.markdown li{margin:5px 0}.markdown ul,.markdown ol{padding-left:1.5em}.markdown img{display:block;max-width:100%;height:auto;background:#fff;border-radius:8px;margin:24px auto}.markdown blockquote{margin:24px 0;background:var(--soft);border-left:3px solid var(--accent);padding:4px 20px;border-radius:0 8px 8px 0}.markdown pre{overflow:auto;background:var(--bg);border:1px solid var(--line);padding:20px;border-radius:8px;font-size:.8rem;line-height:1.75;overflow-wrap:normal;tab-size:4}.markdown code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.markdown :not(pre)>code{background:var(--bg);padding:2px 5px;border-radius:4px;font-size:.88em}.table-wrap{overflow:auto;margin:24px 0}.markdown table{border-collapse:collapse;min-width:100%;font-size:.88rem}.markdown th,.markdown td{border:1px solid var(--line);padding:10px 14px;text-align:left;min-width:90px}.markdown th{background:var(--bg)}.markdown hr{border:0;border-top:1px solid var(--line);margin:40px 0}.contents{font-size:.75rem;border-left:1px solid var(--line);padding-left:20px}.contents a{display:block;color:var(--muted);text-decoration:none;line-height:1.7;padding:6px 0}.contents a:hover{color:var(--accent)}.contents .sub{padding-left:12px;font-size:.7rem}.pager{display:flex;justify-content:space-between;gap:20px;margin:28px 0}.pager a{text-decoration:none;max-width:48%;font-size:.85rem}.pager a:last-child{margin-left:auto;text-align:right}.footer{font-size:.75rem;color:var(--muted);margin-top:28px}.error{color:#b33} [hidden]{display:none!important}
+*{box-sizing:border-box}html{scroll-padding-top:2rem}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.9 system-ui,-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}a{color:var(--accent);text-underline-offset:4px}a:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:4px}.skip{position:absolute;top:-100px;left:1rem}.skip:focus{top:1rem;background:var(--paper);z-index:10}.layout{max-width:1540px;margin:auto;display:grid;grid-template-columns:270px minmax(0,1fr) 220px;gap:36px;padding:36px 32px}.sidebar,.contents{position:sticky;top:32px;align-self:start;max-height:calc(100vh - 64px);overflow:auto}.brand{font-size:1.35rem;font-weight:750;text-decoration:none;display:block}.eyebrow{font-size:.7rem;letter-spacing:.16em;color:var(--muted);font-weight:700}.intro{font-size:.8rem;color:var(--muted);margin:4px 0 28px}.nav-title{font-size:.75rem;color:var(--muted);letter-spacing:.1em}summary{cursor:pointer;font-weight:650}.sidebar summary{margin-bottom:12px}.chapters{display:grid;gap:5px}.chapters a{display:flex;align-items:baseline;gap:12px;text-decoration:none;color:var(--muted);font-size:.85rem;line-height:1.6;padding:11px 12px;border-radius:8px}.chapters a:hover{background:var(--paper)}.chapters a[aria-current=page]{background:var(--soft);color:var(--accent);font-weight:700}.number{font:12px/1.6 ui-monospace,monospace;opacity:.7}.chapters .badge{margin-left:auto;font-size:.62rem;letter-spacing:.04em;border:1px solid currentColor;border-radius:99px;padding:0 7px;opacity:.8;white-space:nowrap;align-self:center}.reading{min-width:0}.toolbar{display:flex;justify-content:space-between;gap:16px;color:var(--muted);font-size:.75rem;margin-bottom:18px}.paper{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:36px 42px}.markdown{overflow-wrap:anywhere}.markdown h1{font-size:1.85rem;line-height:1.55;letter-spacing:-.025em;margin:0 0 32px}.markdown h2{font-size:1.35rem;line-height:1.6;margin:48px 0 20px;padding-bottom:12px;border-bottom:1px solid var(--line)}.markdown h3{font-size:1.08rem;margin:30px 0 12px}.markdown p,.markdown ul,.markdown ol{margin:16px 0}.markdown li{margin:5px 0}.markdown ul,.markdown ol{padding-left:1.5em}.markdown img{display:block;max-width:100%;height:auto;background:#fff;border-radius:8px;margin:24px auto}.markdown blockquote{margin:24px 0;background:var(--soft);border-left:3px solid var(--accent);padding:4px 20px;border-radius:0 8px 8px 0}.markdown pre{overflow:auto;background:var(--bg);border:1px solid var(--line);padding:20px;border-radius:8px;font-size:.8rem;line-height:1.75;overflow-wrap:normal;tab-size:4}.markdown code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.markdown :not(pre)>code{background:var(--bg);padding:2px 5px;border-radius:4px;font-size:.88em}.table-wrap{overflow:auto;margin:24px 0}.markdown table{border-collapse:collapse;min-width:100%;font-size:.88rem}.markdown th,.markdown td{border:1px solid var(--line);padding:10px 14px;text-align:left;min-width:90px}.markdown th{background:var(--bg)}.markdown hr{border:0;border-top:1px solid var(--line);margin:40px 0}.contents{font-size:.75rem;border-left:1px solid var(--line);padding-left:20px}.contents a{display:block;color:var(--muted);text-decoration:none;line-height:1.7;padding:6px 0}.contents a:hover{color:var(--accent)}.contents .sub{padding-left:12px;font-size:.7rem}.pager{display:flex;justify-content:space-between;gap:20px;margin:28px 0}.pager a{text-decoration:none;max-width:48%;font-size:.85rem}.pager a:last-child{margin-left:auto;text-align:right}.footer{font-size:.75rem;color:var(--muted);margin-top:28px}.error{color:#b33} [hidden]{display:none!important}
 @media(prefers-color-scheme:dark){:root{--bg:#151c24;--paper:#1d2631;--ink:#e0e7ee;--muted:#a2b0c1;--line:#354252;--accent:#8dd5b9;--soft:#243e38}}
 @media(min-width:901px){.sidebar summary{pointer-events:none;list-style:none}.sidebar summary::-webkit-details-marker{display:none}}
 @media(max-width:1200px){.layout{grid-template-columns:240px minmax(0,1fr);gap:24px}.contents{display:none}}
@@ -44,8 +44,8 @@ window.addEventListener('DOMContentLoaded', () => {
     ['2_neural_network_basics.md','ニューラルネットワークの基礎'],
     ['3_how_learning_works.md','学習の仕組み'],
     ['4_evaluation_and_tuning.md','学習の評価とチューニング'],
-    ['5_cnn.md','CNN — 画像を扱う'],
-    ['6_rnn_lstm_gru.md','RNN・LSTM・GRU'],
+    ['5_cnn.html','CNN — 画像を扱う'],
+    ['6_rnn_lstm_gru.html','RNN・LSTM・GRU'],
     ['7_attention_transformer.md','Attention と Transformer'],
     ['8_llm_and_generative_ai.md','LLM と生成 AI'],
     ['9_hands_on_and_review.md','ハンズオンと総復習']
@@ -59,11 +59,16 @@ window.addEventListener('DOMContentLoaded', () => {
   document.querySelector('.skip').addEventListener('click', event => { event.preventDefault(); article.focus(); article.scrollIntoView(); });
   const cache = new Map();
   let current = '', request = 0;
+  // アニメーション付きの HTML 版に移行した章（旧 Markdown の URL からも転送する）
+  const moved = {'5_cnn.md':'5_cnn.html','6_rnn_lstm_gru.md':'6_rnn_lstm_gru.html'};
+  const hrefOf = file => file.endsWith('.html') ? file : '#' + file;
   function link(label, href) { const a = document.createElement('a'); a.textContent = label; a.href = href; return a; }
   chapters.forEach(([file,title], i) => {
-    const a = link(title, '#' + file);
+    const a = link(title, hrefOf(file));
     const number = document.createElement('span'); number.className = 'number'; number.textContent = String(i).padStart(2,'0');
-    a.prepend(number); document.querySelector('.chapters').append(a);
+    a.prepend(number);
+    if (file.endsWith('.html')) { const badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = '動く図解'; a.append(badge); }
+    document.querySelector('.chapters').append(a);
   });
   const mobile = matchMedia('(max-width:900px)');
   menu.open = !mobile.matches;
@@ -78,6 +83,8 @@ window.addEventListener('DOMContentLoaded', () => {
     try { [file, section] = decodeURIComponent(location.hash.slice(1)).split('/'); }
     catch { file = ''; }
     file ||= chapters[0][0];
+    const page = moved[file] || file;
+    if (chapters.some(([name]) => name === page && name.endsWith('.html'))) { location.replace(page); return; }
     const index = chapters.findIndex(chapter => chapter[0] === file);
     if (index < 0) { current = ''; article.replaceChildren(); toc.replaceChildren(); pager.replaceChildren(); source.hidden = true; status.hidden = false; status.textContent = '指定された章が見つかりません。章一覧から選択してください。'; return; }
     if (current === file) { scrollToSection(section); return; }
@@ -99,8 +106,9 @@ window.addEventListener('DOMContentLoaded', () => {
       });
       article.querySelectorAll('a[href]').forEach(a => {
         const href = a.getAttribute('href');
-        const target = chapters.find(([name]) => name === href.replace(/^\.\//,''));
-        if (target) a.href = '#' + target[0];
+        const name = href.replace(/^\.\//,'');
+        const target = chapters.find(([file]) => file === (moved[name] || name));
+        if (target) a.href = hrefOf(target[0]);
       });
       article.querySelectorAll('table').forEach(table => { const wrapper = document.createElement('div'); wrapper.className = 'table-wrap'; wrapper.tabIndex = 0; table.before(wrapper); wrapper.append(table); });
       article.querySelectorAll('h2,h3').forEach((heading,i) => {
@@ -111,8 +119,8 @@ window.addEventListener('DOMContentLoaded', () => {
       document.querySelectorAll('.chapters a').forEach((a,i) => { if (i === index) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current'); });
       document.getElementById('position').textContent = index === 0 ? 'COURSE GUIDE ／ 概要と目次' : `CHAPTER ${String(index).padStart(2,'0')} ／ 全9章`;
       source.href = file; source.hidden = false;
-      if (index > 0) pager.append(link('← ' + chapters[index-1][1], '#' + chapters[index-1][0]));
-      if (index < chapters.length-1) pager.append(link(chapters[index+1][1] + ' →', '#' + chapters[index+1][0]));
+      if (index > 0) pager.append(link('← ' + chapters[index-1][1], hrefOf(chapters[index-1][0])));
+      if (index < chapters.length-1) pager.append(link(chapters[index+1][1] + ' →', hrefOf(chapters[index+1][0])));
       document.title = chapters[index][1] + ' | 深層学習入門';
       current = file; status.hidden = true;
       if (matchMedia('(max-width:900px)').matches) menu.open = false;

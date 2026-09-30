@@ -15,6 +15,11 @@
 
 Markdown と SVG を直接読み込むため、資料の更新後に HTML を再生成する必要はありません。描画にはバージョン固定の marked と DOMPurify を CDN から読み込みます。
 
+第5章（CNN）と第6章（RNN・LSTM・GRU）は、アニメーションで処理の流れを追える HTML 版（`5_cnn.html` / `6_rnn_lstm_gru.html`）です。章一覧からはこちらが開き、旧 URL（`#5_cnn.md` など）からも転送されます。各図解は再生・一時停止・コマ送り・シーク・速度変更ができ、OS の「視差効果を減らす」設定が有効な場合は自動再生しません。外部ライブラリには依存しません。
+
+- `assets/interactive.css` / `assets/interactive.js`：2 章で共有するレイアウトとアニメーション用プレーヤー
+- `assets/ch5-cnn.js` / `assets/ch6-rnn.js`：各章の図解（表示する数値はすべてここで計算）
+
 ローカル確認はリポジトリ直下で以下を実行し、`http://localhost:8000/deep-learning-introduction/` を開いてください（HTML ファイルの直接オープンではなく HTTP 経由で確認します）。
 
 ```sh

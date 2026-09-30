@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:,">
+<title>CNN — 画像を扱う | 深層学習入門</title>
+<meta name="description" content="第5章：CNN（畳み込みニューラルネットワーク）の仕組みを、畳み込み・プーリング・データの流れ・転移学習のアニメーションで学ぶ。">
+<link rel="stylesheet" href="assets/interactive.css">
+<script defer src="assets/interactive.js"></script>
+<script defer src="assets/ch5-cnn.js"></script>
+</head>
+<body data-chapter="5_cnn.html">
+<a class="skip" href="#article">本文へ移動</a>
+<div class="progress" aria-hidden="true"><span></span></div>
+<div class="layout">
+<aside class="sidebar">
+  <div class="eyebrow">ENGINEER'S LEARNING NOTES</div>
+  <a class="brand" href="index.html">深層学習入門</a>
+  <p class="intro">仕組みを理解して、生成AI時代を読み解く。</p>
+  <details id="chapter-menu" open><summary>学習コンテンツ <span class="nav-title">／ 全9章</span></summary><nav class="chapters" aria-label="章一覧"></nav></details>
+  <p class="footer">図解は ▶ 再生・コマ送り・スライダーで操作できます。<br>← → キーでも 1 コマずつ進められます。</p>
+</aside>
+
+<main class="reading" id="main">
+<div class="toolbar"><span>CHAPTER 05 ／ 全9章 · 動く図解版</span><span>所要時間の目安：60〜75 分</span></div>
+<article class="paper lesson" id="article" tabindex="-1">
+
+<h1>第5章：CNN — 画像を扱うニューラルネットワーク</h1>
+<p class="lead">フィルタが画像の上を滑り、特徴マップが生まれ、層を重ねるごとに「エッジ」が「猫」になっていく。その過程をアニメーションで追いかけます。</p>
+
+<p>ここまで扱ってきたのは、すべてのニューロンが次の層のすべてのニューロンとつながる <strong>全結合層（Fully Connected Layer）</strong> でした。表現力は高いのですが、画像を入力にすると途端に破綻します。</p>
+<p>本章では、なぜ破綻するのかを確認し、それを解決した <strong>CNN（Convolutional Neural Network、畳み込みニューラルネットワーク）</strong> の仕組みを見ていきます。画像認識の精度を一気に押し上げ、深層学習ブームの火付け役となったアーキテクチャです。</p>
+
+<h2 id="s5-1">5.1 なぜ画像に全結合層では不十分なのか</h2>
+
+<h3 id="s5-1-1">パラメータ数の爆発</h3>
+<p>画像をそのまま全結合層に入れることを考えます。画像はピクセルの並びなので、1 列に引き伸ばして（<strong>flatten</strong> して）入力ベクトルにします。下のアニメーションで、6×6 の小さな画像が 36 次元のベクトルになり、隠れ層とつながるまでを見てみましょう。</p>
+
+<div class="demo" id="d-flatten" aria-label="画像を flatten して全結合層につなぐアニメーション">
+  <div class="demo-head"><span class="demo-kicker">アニメーション</span><h4 class="demo-title">画像を 1 列に引き伸ばして全結合層へ入れると…</h4></div>
+  <div class="demo-stage svg-stage hscroll" style="--minw:540px"></div>
+</div>
+
+<p>実際の画像サイズで計算すると、次のようになります。</p>
+<pre><code>28×28 のグレースケール画像（MNIST）
+  → 784 次元のベクトル
+  → 隠れ層 1000 ユニットへの重み = 784 × 1000 = 784,000 個
+
+224×224 のカラー画像（一般的な写真）
+  → 224 × 224 × 3 = 150,528 次元のベクトル
+  → 隠れ層 1000 ユニットへの重み = 150,528 × 1000 = 150,528,000 個（約 1.5 億）</code></pre>
+
+<div class="demo" id="d-params" aria-label="全結合層と畳み込み層のパラメータ数の比較">
+  <div class="demo-head"><span class="demo-kicker">インタラクティブ</span><h4 class="demo-title">画像サイズを変えて、1 層目のパラメータ数を比べる</h4></div>
+  <div class="demo-stage"></div>
+</div>
+
+<p><strong>1 層目だけで 1.5 億パラメータ</strong>。学習に必要なデータ量も計算量もメモリも現実的ではありません。</p>
+
+<h3 id="s5-1-2">位置のずれへの弱さ</h3>
+<p>もっと本質的な問題があります。全結合層は入力ベクトルの「何番目の要素か」でしか物事を区別できません。猫が左上にいる画像と右下にいる画像は、flatten すると <strong>まったく別のベクトル</strong> になり、全結合層は「同じ猫」だと認識できず、別々に学習し直す必要があります。</p>
+<p>さらに、flatten した時点で「隣のピクセルとの近さ」という情報が失われます（上のアニメーションで、縦に隣り合っていた 2 ピクセルが 6 マスも離れたのを思い出してください）。画像では、隣接するピクセル同士が強く関係しています（エッジ、テクスチャなど）。この構造を活かせないのは大きな損失です。</p>
+
+<div class="demo" id="d-shift" aria-label="模様の位置をずらしたときの、flatten ベクトルと畳み込みの反応の違い">
+  <div class="demo-head"><span class="demo-kicker">アニメーション</span><h4 class="demo-title">模様を動かすと、全結合と畳み込みの「見え方」はどう変わる？</h4></div>
+  <div class="demo-stage"></div>
+</div>
+
+<p>CNN はこの 2 つの問題を、次の 2 つのアイデアで解決します。</p>
+<table>
+<thead><tr><th>問題</th><th>CNN の解決</th></tr></thead>
+<tbody>
+<tr><td>パラメータ数の爆発</td><td><strong>重み共有</strong> — 同じ小さなフィルタを画像全体で使い回す</td></tr>
+<tr><td>位置のずれへの弱さ</td><td><strong>局所的な走査</strong> — 画像のどこにあっても同じ特徴として検出できる</td></tr>
+</tbody>
+</table>
+
+<h2 id="s5-2">5.2 畳み込み層</h2>
+
+<h3 id="s5-2-1">フィルタ（カーネル）とは</h3>
+<p><strong>畳み込み（convolution）</strong> は、小さな窓（<strong>フィルタ</strong> または <strong>カーネル</strong>）を画像の上でスライドさせ、重なった部分の <strong>積和</strong>（要素ごとに掛けて、全部足す）を計算する演算です。3×3 のフィルタを 5×5 の入力に適用する様子を、1 マスずつ追ってみましょう。</p>
+
+<div class="demo" id="d-conv" aria-label="畳み込み演算のアニメーション">
+  <div class="demo-head"><span class="demo-kicker">アニメーション</span><h4 class="demo-title">3×3 フィルタが入力の上をスライドし、特徴マップを作る</h4></div>
+  <div class="demo-stage"></div>
+</div>
+
+<p>左上の計算を書き下すと次のとおりです（出力マスをクリックすると、その位置の計算にジャンプできます）。</p>
+<pre><code>(1*1 + 1*0 + 1*1) + (0*0 + 1*1 + 1*0) + (0*1 + 0*0 + 1*1) = 4</code></pre>
+
+<p>フィルタの値は <strong>学習で決まる重み</strong> です。人間が設計するのではなく、データから「どんなパターンを検出すると損失が下がるか」を学びます（上の図の「縦エッジ」「横エッジ」は、学習の結果として獲得されやすいフィルタの例です）。</p>
+<p>重要なのは、<strong>同じフィルタを画像全体で使い回す</strong>（<strong>重み共有</strong>）点です。3×3 のフィルタなら重みは 9 個だけ。これがパラメータ数爆発の解決策であり、同時に「画像のどこにあっても同じ特徴を検出できる」性質（<strong>位置不変性</strong>）を生みます。</p>
+
+<pre><code class="python">import torch
+import torch.nn.functional as F
+
+x = torch.tensor([[[[1., 1, 1, 0, 0],
+                    [0, 1, 1, 1, 0],
+                    [0, 0, 1, 1, 1],
+                    [0, 0, 1, 1, 0],
+                    [0, 1, 1, 0, 0]]]])      # (N=1, C=1, H=5, W=5)
+w = torch.tensor([[[[1., 0, 1],
+                    [0, 1, 0],
+                    [1, 0, 1]]]])            # (out_ch=1, in_ch=1, 3, 3)
+
+print(F.conv2d(x, w))
+# tensor([[[[4., 3., 4.],
+#           [2., 4., 3.],
+#           [2., 3., 4.]]]])</code></pre>
+
+<h3 id="s5-2-2">ストライド・パディング・チャネル</h3>
+<p>畳み込み層には、出力サイズを決める 3 つの設定があります。上のアニメーションの「ストライド」「パディング」を切り替えると、窓の動き方と出力サイズが変わるのを確認できます。</p>
+<ul>
+<li><strong>ストライド（stride）</strong>：フィルタを何マスずつ動かすか。大きくすると出力が小さくなります。</li>
+<li><strong>パディング（padding）</strong>：入力の周囲を 0 で埋めること。端のピクセルが使われる回数が減る問題を緩和し、出力サイズを入力と揃えられます。</li>
+</ul>
+<div class="eq">出力サイズ = (入力サイズ + 2×パディング − フィルタサイズ) / ストライド + 1<br>
+例: 入力 28, パディング 1, フィルタ 3, ストライド 1 → (28 + 2 − 3) / 1 + 1 = 28 ← サイズが保たれる</div>
+
+<p><strong>チャネル（channel）</strong>：カラー画像は RGB の 3 チャネルを持ちます。畳み込みは全チャネルをまたいで行われ、フィルタも入力チャネル数と同じ <strong>深さ</strong> を持ちます。各チャネルの積和を <strong>足し合わせて 1 つの値</strong> にするのがポイントです。出力チャネル数は「フィルタを何種類用意するか」で決まります。</p>
+
+<div class="demo" id="d-channels" aria-label="複数チャネルにまたがる畳み込みのアニメーション">
+  <div class="demo-head"><span class="demo-kicker">アニメーション</span><h4 class="demo-title">RGB 3 チャネル → 1 枚の特徴マップ、フィルタ 16 種類 → 16 枚</h4></div>
+  <div class="demo-stage"></div>
+</div>
+
+<pre><code class="python">import torch.nn as nn
+
+conv = nn.Conv2d(in_channels=3, out_channels=16, kernel_size=3, stride=1, padding=1)
+
+x = torch.randn(8, 3, 28, 28)     # (バッチ, チャネル, 高さ, 幅)
+y = conv(x)
+print(y.shape)                    # torch.Size([8, 16, 28, 28])
+
+# パラメータ数 = 16 * (3 * 3 * 3) + 16(バイアス) = 448 個だけ
+print(sum(p.numel() for p in conv.parameters()))   # 448</code></pre>
+<p>同じ入力に全結合層をつなぐと数百万パラメータになるところが、<strong>448 個</strong>で済みます。</p>
+
+<h3 id="s5-2-3">特徴マップの階層的な抽象化</h3>
+<p>畳み込み層を重ねると、検出される特徴が段階的に抽象化されていきます。ここが CNN の最も面白いところです。後ろの層ほど 1 つのニューロンが「見ている」入力の範囲（<strong>受容野</strong>）が広がり、より大きく意味のあるまとまりを捉えられるようになります。</p>
+
+<div class="demo" id="d-hierarchy" aria-label="層が深くなるにつれて受容野が広がり、特徴が抽象化される様子">
+  <div class="demo-head"><span class="demo-kicker">アニメーション</span><h4 class="demo-title">エッジ → 部品 → 物体：層ごとに広がる受容野</h4></div>
+  <div class="demo-stage svg-stage hscroll" style="--minw:560px"></div>
+</div>
+
+<p>第1章で触れた「特徴量設計の自動化」が、まさにこれです。従来の画像処理では人間がエッジ検出フィルタを設計していましたが、CNN はそれをデータから獲得します。</p>
+
+<h2 id="s5-3">5.3 プーリング層と全体構造</h2>
+
+<h3 id="s5-3-1">最大プーリング・平均プーリング</h3>
+<p><strong>プーリング（pooling）</strong> は特徴マップを縮小する操作です。学習するパラメータはありません。2×2 の窓を 2 マスずつ動かし、各ブロックを 1 つの値に要約します。</p>
+
+<div class="demo" id="d-pool" aria-label="最大プーリングと平均プーリングのアニメーション">
+  <div class="demo-head"><span class="demo-kicker">アニメーション</span><h4 class="demo-title">2×2 プーリング（stride=2）で 4×4 → 2×2</h4></div>
+  <div class="demo-stage"></div>
+</div>
+
+<p>目的は 3 つです。</p>
+<ol>
+<li><strong>計算量とパラメータの削減</strong> — 特徴マップが 1/4 になる</li>
+<li><strong>位置のずれへの頑健性</strong> — 1〜2 ピクセルずれても最大値は変わりにくい</li>
+<li><strong>受容野の拡大</strong> — 後ろの層ほど広い範囲を「見る」ようになる</li>
+</ol>
+<pre><code class="python">pool = nn.MaxPool2d(kernel_size=2, stride=2)
+print(pool(torch.randn(8, 16, 28, 28)).shape)   # torch.Size([8, 16, 14, 14])</code></pre>
+<div class="callout warn"><b>よくある誤解</b>最近のアーキテクチャでは、プーリングの代わりに stride=2 の畳み込みで縮小することも増えています。プーリングは必須ではありません。</div>
+
+<h3 id="s5-3-2">CNN 全体のアーキテクチャ</h3>
+<p>典型的な CNN は「<strong>特徴抽出部</strong>」と「<strong>識別部</strong>」の 2 段構成になっています。</p>
+<pre><code>入力画像
+  ↓
+[ 畳み込み → 活性化(ReLU) → プーリング ] × 数回     ← 特徴抽出部
+  ↓
+Flatten（1次元に引き伸ばす）
+  ↓
+[ 全結合層 → 活性化 ]                                ← 識別部
+  ↓
+全結合層 → Softmax
+  ↓
+クラスごとの確率</code></pre>
+
+<p>PyTorch での最小実装例（MNIST 相当、10 クラス分類）を、手書きの「7」が流れていく様子と対応づけて見てみましょう。コードの <span style="background:color-mix(in srgb,var(--orange) 14%,transparent);padding:0 4px;border-radius:3px">ハイライト行</span> が、図の中で今起きている処理です。</p>
+
+<div class="demo" id="d-pipeline" aria-label="CNN の中をデータが流れ、形状が変わっていく様子">
+  <div class="demo-head"><span class="demo-kicker">アニメーション</span><h4 class="demo-title">テンソルの形状はこう変わる：(1, 28, 28) → 10 クラスの確率</h4></div>
+  <div class="demo-stage">
+    <div class="hscroll svg-stage" style="--minw:620px" id="pipeline-svg"></div>
+<pre id="pipeline-code"><code class="python">model = nn.Sequential(
+    nn.Conv2d(1, 16, kernel_size=3, padding=1),   # (1,28,28) -> (16,28,28)
+    nn.ReLU(),
+    nn.MaxPool2d(2),                              #          -> (16,14,14)
+
+    nn.Conv2d(16, 32, kernel_size=3, padding=1),  #          -> (32,14,14)
+    nn.ReLU(),
+    nn.MaxPool2d(2),                              #          -> (32, 7, 7)
+
+    nn.Flatten(),                                 #          -> (1568,)
+    nn.Linear(32 * 7 * 7, 128),
+    nn.ReLU(),
+    nn.Dropout(0.5),                              # 第4章の正則化
+    nn.Linear(128, 10),                           # 出力: 10クラス
+)
+
+x = torch.randn(64, 1, 28, 28)
+print(model(x).shape)     # torch.Size([64, 10])</code></pre>
+  </div>
+</div>
+
+<p>学習ループ・損失関数・オプティマイザは第3章と同じです。CNN だからといって学習の仕組みが変わるわけではありません。<strong>層の種類が変わっただけ</strong>です。</p>
+<div class="callout tip"><b>実務での位置づけ</b>チャネル数は層が深くなるほど増やし（16 → 32 → 64）、空間サイズは減らしていく（28 → 14 → 7）のが定石です。「空間の情報を、意味の情報に変換していく」イメージです。</div>
+
+<h2 id="s5-4">5.4 代表的なモデルと応用</h2>
+
+<h3 id="s5-4-1">LeNet / AlexNet / VGG / ResNet の流れ</h3>
+<p>CNN の歴史は「どうやって深くするか」の歴史でもあります。層の数の推移を見ると、2015 年の ResNet で桁が変わったことがわかります。</p>
+
+<div class="demo" id="d-models" aria-label="代表的な CNN モデルの層数と ImageNet でのエラー率">
+  <div class="demo-head"><span class="demo-kicker">グラフ</span><h4 class="demo-title">代表的なモデルの層数と、ImageNet 画像分類のエラー率</h4></div>
+  <div class="demo-stage"></div>
+</div>
+
+<table>
+<thead><tr><th>モデル</th><th>年</th><th>層数</th><th>貢献</th></tr></thead>
+<tbody>
+<tr><td><strong>LeNet-5</strong></td><td>1998</td><td>7</td><td>CNN の原型。郵便番号の手書き数字認識に実用化</td></tr>
+<tr><td><strong>AlexNet</strong></td><td>2012</td><td>8</td><td>ReLU・Dropout・GPU 学習を導入し ILSVRC で圧勝。深層学習ブームの起点</td></tr>
+<tr><td><strong>VGG-16</strong></td><td>2014</td><td>16</td><td>3×3 の小さいフィルタを重ねるだけ、というシンプルな設計思想</td></tr>
+<tr><td><strong>GoogLeNet</strong></td><td>2014</td><td>22</td><td>Inception モジュールで複数サイズのフィルタを並列適用</td></tr>
+<tr><td><strong>ResNet</strong></td><td>2015</td><td>50〜152</td><td><strong>残差接続</strong>で 100 層超を学習可能に。人間の識別精度を超える</td></tr>
+</tbody>
+</table>
+
+<p>特に <strong>ResNet の残差接続（skip connection）</strong> は重要です。層を深くすると、誤差逆伝播で勾配が層を通るたびに小さくなり、入力に近い層まで伝わりにくくなります。ResNet はこれに対し、「入力をそのまま出力に足す」迂回路を作りました。<code>y = x + F(x)</code> を微分すると <code>1 + F′(x)</code> となり、「1」の分だけ勾配がそのまま素通りできるのです。</p>
+
+<div class="demo" id="d-residual" aria-label="通常の深いネットワークと残差接続での勾配の伝わり方の比較">
+  <div class="demo-head"><span class="demo-kicker">アニメーション</span><h4 class="demo-title">逆伝播で勾配はどこまで届くか：通常 vs 残差接続</h4></div>
+  <div class="demo-stage svg-stage hscroll" style="--minw:560px"></div>
+</div>
+
+<p>このアイデアは画像に限らず、第6章の LSTM のセル状態や、第7章の Transformer にも引き継がれています。</p>
+
+<h3 id="s5-4-2">画像分類・物体検出・セグメンテーション</h3>
+<p>CNN が扱うタスクは、<strong>出力の粒度</strong>で整理できます。同じ画像に対して、それぞれ何を出力するのかを比べてみましょう。</p>
+
+<div class="demo" id="d-tasks" aria-label="画像分類・物体検出・セグメンテーションの出力の違い">
+  <div class="demo-head"><span class="demo-kicker">アニメーション</span><h4 class="demo-title">同じ画像、3 つのタスク</h4></div>
+  <div class="demo-stage svg-stage hscroll" style="--minw:560px"></div>
+</div>
+
+<table>
+<thead><tr><th>タスク</th><th>出力</th><th>代表モデル</th></tr></thead>
+<tbody>
+<tr><td><strong>画像分類</strong></td><td>画像全体に 1 つのラベル（「猫」）</td><td>ResNet, EfficientNet</td></tr>
+<tr><td><strong>物体検出</strong></td><td>複数の矩形（bounding box）とラベル</td><td>YOLO, Faster R-CNN</td></tr>
+<tr><td><strong>セグメンテーション</strong></td><td>ピクセル 1 つ 1 つにラベル</td><td>U-Net, Mask R-CNN</td></tr>
+</tbody>
+</table>
+<p>実際の応用先としては、医療画像診断、製造ラインの外観検査、自動運転の周辺認識、顔認証、衛星画像解析などがあります。</p>
+
+<h3 id="s5-4-3">転移学習・ファインチューニング</h3>
+<p>CNN をゼロから学習するには、大量のデータ（数十万枚〜）と時間が必要です。実務でこれを毎回行うのは非現実的です。</p>
+<p>そこで <strong>転移学習（transfer learning）</strong> を使います。ImageNet（1000 クラス・約 120 万枚）などで学習済みのモデルを持ってきて、自分のタスクに流用する方法です。「エッジや形を検出する能力」はどんな画像タスクでも共通なので、そこを流用できるのです。</p>
+
+<div class="demo" id="d-transfer" aria-label="学習済み ResNet を転移学習する手順のアニメーション">
+  <div class="demo-head"><span class="demo-kicker">アニメーション</span><h4 class="demo-title">学習済み ResNet-18 を「良品 / 不良品」分類に流用する</h4></div>
+  <div class="demo-stage">
+    <div class="hscroll svg-stage" style="--minw:560px" id="transfer-svg"></div>
+    <pre id="transfer-code"><code class="python"></code></pre>
+  </div>
+</div>
+
+<p>用語の使い分け：</p>
+<ul>
+<li><strong>特徴抽出（feature extraction）</strong>：既存層を凍結し、最終層だけ学習する。データが少ない時に有効</li>
+<li><strong>ファインチューニング（fine-tuning）</strong>：全体、または後半の層も含めて小さい学習率で再学習する。データがそこそこある時に有効</li>
+</ul>
+<div class="callout tip"><b>実務での位置づけ</b>画像タスクは「まず学習済み ResNet を転移学習」から始めるのが定石です。数百枚程度のデータでも実用的な精度が出ることがあります。ゼロから設計するのは最後の手段です。</div>
+
+<h2 id="s5-summary">まとめ</h2>
+<p>本章では、画像を扱うための CNN を学びました：</p>
+<ul class="summary-list">
+<li><strong>全結合層は画像に対してパラメータが爆発し、位置のずれにも弱い</strong></li>
+<li><strong>畳み込み層はフィルタの重み共有で、少ないパラメータと位置不変性を両立する</strong></li>
+<li><strong>層を重ねるごとに、エッジ → 部品 → 物体と特徴が階層的に抽象化される</strong></li>
+<li><strong>CNN は「畳み込み＋プーリングの特徴抽出部」と「全結合の識別部」で構成される</strong></li>
+<li><strong>実務では学習済みモデルの転移学習・ファインチューニングから始めるのが定石</strong></li>
+</ul>
+<p>次章では、画像とは性質の異なる「系列データ」— 文章や時系列 — を扱うための RNN 系のアーキテクチャを見ていきます。</p>
+
+<h2 id="s5-exercises">演習問題</h2>
+
+<div class="exercise">
+<p><strong>1.</strong> 入力が <code>(3, 64, 64)</code> の画像に対し、<code>nn.Conv2d(3, 32, kernel_size=5, stride=1, padding=2)</code> を適用しました。出力の形状（チャネル、高さ、幅）を計算してください。また、この層のパラメータ数は何個でしょうか。</p>
+<details><summary>解答例を見る</summary>
+<p>出力サイズ = (64 + 2×2 − 5) / 1 + 1 = 64 なので、出力は <code>(32, 64, 64)</code>。<br>パラメータ数 = 32 × (3 × 5 × 5) + 32（バイアス）= 2,400 + 32 = <strong>2,432 個</strong>。</p>
+</details>
+</div>
+
+<div class="exercise">
+<p><strong>2.</strong> 「畳み込み層の重み共有が、パラメータ削減と位置不変性の両方をもたらす」のはなぜでしょうか。全結合層と比較して説明してください。</p>
+<details><summary>解答例を見る</summary>
+<p>全結合層は入力の各位置に別々の重みを持つため、パラメータ数は入力サイズに比例して増え、同じ模様でも位置が違えば別の重みで学習し直す必要がある。畳み込み層は小さなフィルタ 1 つを全位置で使い回すので、パラメータ数は画像サイズに依存せず「フィルタの大きさ × チャネル数」だけで済む。また、どの位置でも同じ重みで同じ計算をするため、模様がずれても同じ反応が（ずれた位置に）現れ、位置によらず同じ特徴として検出できる。</p>
+</details>
+</div>
+
+<div class="exercise">
+<p><strong>3.</strong> 次の CNN で <code>nn.Flatten()</code> の直後に置く全結合層の入力次元を求めてください。</p>
+<pre><code class="python">nn.Conv2d(3, 16, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),   # 入力 (3, 32, 32)
+nn.Conv2d(16, 32, 3, padding=1), nn.ReLU(), nn.MaxPool2d(2),
+nn.Flatten(),
+nn.Linear(???, 10),</code></pre>
+<details><summary>解答例を見る</summary>
+<p>(3, 32, 32) → 畳み込み (16, 32, 32) → プーリング (16, 16, 16) → 畳み込み (32, 16, 16) → プーリング (32, 8, 8)。Flatten 後の次元は 32 × 8 × 8 = <strong>2,048</strong>。</p>
+</details>
+</div>
+
+<div class="exercise">
+<p><strong>4.</strong> 手元に「良品／不良品」の製品写真が合計 400 枚あります。ゼロから CNN を設計するのと、学習済み ResNet を転移学習するのと、どちらを選びますか。理由とともに答えてください。</p>
+<details><summary>解答例を見る</summary>
+<p>学習済み ResNet の転移学習を選ぶ。400 枚ではゼロから学習すると過学習しやすく、エッジや形といった汎用的な特徴を獲得するにはデータが足りない。学習済みモデルの特徴抽出部はそれらをすでに獲得しているため、最終層（識別部）だけを学習すれば少量データでも実用的な精度が期待できる。精度が足りなければ、後半の層も小さい学習率でファインチューニングする。</p>
+</details>
+</div>
+
+</article>
+<nav class="pager" aria-label="前後の章"></nav>
+</main>
+<aside class="contents"><div class="nav-title">このページの目次</div><nav id="toc" aria-label="ページ内目次"></nav></aside>
+</div>
+</body>
+</html>
