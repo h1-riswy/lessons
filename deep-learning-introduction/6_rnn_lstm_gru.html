@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:,">
+<title>RNN・LSTM・GRU | 深層学習入門</title>
+<meta name="description" content="第6章：系列データを扱う RNN・LSTM・GRU の仕組みを、時間方向の展開・勾配消失・ゲート機構・Seq2Seq のアニメーションで学ぶ。">
+<link rel="stylesheet" id="katex-css" href="https://cdn.jsdelivr.net/npm/katex@0.18.9/dist/katex.min.css" integrity="sha384-lPx0C4zIUZLpveABMwOFcFeGZwsvKBJfhJ85FN1PYOV7xApBcFMhcAEMVKF8loOI" crossorigin="anonymous">
+<script async id="katex-js" src="https://cdn.jsdelivr.net/npm/katex@0.18.9/dist/katex.min.js" integrity="sha384-19KE2cFb3U+RUWmyhBz7aLOGDG8WrRC6hE3oY/HTZZlAAVWYTdmvLC//+TIV3zUx" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="assets/interactive.css">
+<script defer src="assets/interactive.js"></script>
+<script defer src="assets/ch6-rnn.js"></script>
+</head>
+<body data-chapter="6_rnn_lstm_gru.html">
+<a class="skip" href="#article">本文へ移動</a>
+<div class="progress" aria-hidden="true"><span></span></div>
+<div class="layout">
+<aside class="sidebar">
+  <div class="eyebrow">ENGINEER'S LEARNING NOTES</div>
+  <a class="brand" href="index.html">深層学習入門</a>
+  <p class="intro">仕組みを理解して、生成AI時代を読み解く。</p>
+  <details id="chapter-menu" open><summary>学習コンテンツ <span class="nav-title">／ 全9章</span></summary><nav class="chapters" aria-label="章一覧"></nav></details>
+  <p class="footer">図解は ▶ 再生・コマ送り・スライダーで操作できます。<br>← → キーでも 1 コマずつ進められます。</p>
+</aside>
+
+<main class="reading" id="main">
+<div class="toolbar"><span>CHAPTER 06 ／ 全9章 · 動く図解版</span><span>所要時間の目安：60〜75 分</span></div>
+<article class="paper lesson" id="article" tabindex="-1">
+
+<h1>第6章：RNN・LSTM・GRU — 系列データを扱う</h1>
+<p class="lead">記憶を持ち回りながら 1 語ずつ読む RNN。その記憶がなぜ薄れ、LSTM・GRU のゲートがどう守るのか。情報と勾配の流れをアニメーションで追いかけます。</p>
+
+<p>前章の CNN は「画像のどこにあっても同じ猫は猫」という <strong>位置不変性</strong> を活かすアーキテクチャでした。しかし世の中には、順番そのものに意味があるデータがあります。</p>
+
+<div class="demo" id="d-order" aria-label="語順を入れ替えると意味が変わる例">
+  <div class="demo-head"><span class="demo-kicker">インタラクティブ</span><h4 class="demo-title">単語の集合は同じ、意味は正反対</h4></div>
+  <div class="demo-stage"></div>
+</div>
+
+<p>本章では、こうした <strong>系列データ（sequential data）</strong> を扱う RNN と、その改良版である LSTM・GRU を見ていきます。現在の主流は第7章で扱う Transformer ですが、その必要性を理解するには、RNN が何に苦しんだのかを知る必要があります。</p>
+
+<h2 id="s6-1">6.1 系列データと再帰構造</h2>
+
+<h3 id="s6-1-1">時系列・自然言語の何が特殊なのか</h3>
+<p>系列データには、これまでのデータと違う 3 つの特徴があります。</p>
+<table>
+<thead><tr><th>特徴</th><th>説明</th><th>例</th></tr></thead>
+<tbody>
+<tr><td><strong>順序に意味がある</strong></td><td>並び替えると意味が変わる</td><td>単語の並び、株価の推移</td></tr>
+<tr><td><strong>長さが可変</strong></td><td>入力ごとに要素数が違う</td><td>3 単語の文も 100 単語の文もある</td></tr>
+<tr><td><strong>文脈依存</strong></td><td>前の要素が後の解釈を左右する</td><td>「それ」が何を指すかは前文次第</td></tr>
+</tbody>
+</table>
+<p>全結合層や CNN は「固定長の入力」を前提としています。文章ごとに長さが違うデータをそのまま入れることはできません。</p>
+
+<h3 id="s6-1-2">RNN の基本構造と隠れ状態</h3>
+<p><strong>RNN（Recurrent Neural Network、再帰型ニューラルネットワーク）</strong> は、<strong>隠れ状態（hidden state）</strong> という「これまでの記憶」を持ち回ることでこれを解決します。出力した記憶を、次の時刻の入力として自分自身に戻す（再帰）のです。1 ステップの計算はシンプルです。</p>
+<div class="mb-row"><div class="mb">h_t = \tanh\!\Big( \underbrace{W_x\, x_t}_{\text{新しい入力}} + \underbrace{W_h\, h_{t-1}}_{\text{前の記憶}} + b \Big)</div><div class="mb">y_t = W_y\, h_t + b_y</div></div>
+<p>ポイントは、<span class="m">W_x</span>, <span class="m">W_h</span>, <span class="m">W_y</span> が <strong>全ステップで共通</strong> であることです。CNN のフィルタ共有と同じ発想で、これにより任意の長さの系列を同じパラメータで処理できます。</p>
+
+<aside class="math-box" aria-label="数式で見る：記号の形と、展開したときの形">
+<div class="math-head"><span class="math-kicker">数式で見る</span><b>記号の形（次元）と、展開したときの形</b></div>
+<p>入力の次元を <span class="m">D</span>、隠れ状態の次元を <span class="m">H</span> とすると、各記号の形は次のとおりです。tanh は要素ごとに作用し、値を <span class="m">(-1, 1)</span> の範囲に収めます。</p>
+<div class="mb-row"><div class="mb">x_t \in \mathbb{R}^{D}, \quad h_t \in \mathbb{R}^{H}, \quad b \in \mathbb{R}^{H}</div><div class="mb">W_x \in \mathbb{R}^{H \times D}, \quad W_h \in \mathbb{R}^{H \times H}</div></div>
+<p>この式を 3 ステップ分展開すると、同じ <span class="m">W_h</span> が入れ子になって何度も現れます（見やすさのため <span class="m">b</span> は省略）。</p>
+<div class="mb">h_3 = \tanh\!\Big( W_x x_3 + W_h \tanh\!\big( W_x x_2 + W_h \tanh( W_x x_1 + W_h h_0 ) \big) \Big)</div>
+<p>この「同じ行列の繰り返し」が、次節で扱う勾配消失・勾配爆発の原因になります。</p>
+</aside>
+
+<h3 id="s6-1-3">時間方向への展開</h3>
+<p>再帰構造は、時間方向に引き伸ばす（<strong>unroll</strong> する）と普通のネットワークとして見えます。下のアニメーションで、ループの形をした RNN を展開し、"I love deep learning" を 1 語ずつ読ませてみましょう。</p>
+
+<div class="demo" id="d-unroll" aria-label="RNN を時間方向に展開し、隠れ状態が更新されていく様子">
+  <div class="demo-head"><span class="demo-kicker">アニメーション</span><h4 class="demo-title">RNN を展開して、1 語ずつ読ませる</h4></div>
+  <div class="demo-stage svg-stage hscroll" style="--minw:560px"></div>
+</div>
+
+<p>展開してしまえば、学習は第3章の誤差逆伝播法と同じです。ただし時間方向にさかのぼって勾配を伝えるため、特に <strong>BPTT（Backpropagation Through Time、通時的誤差逆伝播）</strong> と呼ばれます。</p>
+
+<aside class="math-box" aria-label="数式で見る：BPTT">
+<div class="math-head"><span class="math-kicker">数式で見る</span><b>BPTT：勾配は時間をさかのぼって掛け算される</b></div>
+<p>損失は各時刻の損失の和 <span class="m">L = \sum_{t=1}^{T} L_t</span> です。時刻 <span class="m">t</span> の損失がそれより前の時刻 <span class="m">k</span> の隠れ状態に与える影響は、連鎖律によりヤコビアンの積になります。</p>
+<div class="mb">\frac{\partial L_t}{\partial h_k} = \frac{\partial L_t}{\partial h_t}\; \frac{\partial h_t}{\partial h_{t-1}}\, \frac{\partial h_{t-1}}{\partial h_{t-2}} \cdots \frac{\partial h_{k+1}}{\partial h_k}</div>
+<p>重み <span class="m">W_h</span> は全時刻で共有されているので、その勾配は各時刻からの寄与をすべて足し合わせたものです。<span class="m">\partial^{+}</span> は、1 つ前の隠れ状態を定数とみなした「その時刻だけ」の微分を表します。</p>
+<div class="mb">\frac{\partial L}{\partial W_h} = \sum_{t=1}^{T} \sum_{k=1}^{t} \frac{\partial L_t}{\partial h_k}\, \frac{\partial^{+} h_k}{\partial W_h}</div>
+<p>遠い過去（<span class="m">t - k</span> が大きい）ほど、掛け算されるヤコビアンの数が増えます。</p>
+</aside>
+<p>RNN は入出力の対応づけ方でいくつかのパターンに分かれます。</p>
+
+<div class="demo" id="d-patterns" aria-label="RNN の入出力パターン">
+  <div class="demo-head"><span class="demo-kicker">アニメーション</span><h4 class="demo-title">入出力の 3 パターン</h4></div>
+  <div class="demo-stage svg-stage hscroll" style="--minw:520px"></div>
+</div>
+
+<h2 id="s6-2">6.2 RNN の課題</h2>
+
+<h3 id="s6-2-1">勾配消失・勾配爆発</h3>
+<p>RNN は理論上いくらでも長い系列を扱えますが、実際には長い系列でうまく学習できません。BPTT では、時刻 t の誤差を時刻 1 まで伝えるのに、同じ重み行列を <strong>何度も掛け算する</strong> ことになるからです。1 ステップさかのぼるごとの倍率を変えて、50 ステップ前まで勾配がどう伝わるかを見てみましょう。</p>
+
+<div class="demo" id="d-bptt" aria-label="BPTT で勾配が時間をさかのぼるにつれて消失・爆発する様子">
+  <div class="demo-head"><span class="demo-kicker">インタラクティブ</span><h4 class="demo-title">50 ステップさかのぼると勾配はどうなる？</h4></div>
+  <div class="demo-stage"></div>
+</div>
+
+<p>50 ステップさかのぼると、およそ <span class="m">W_h</span> を 50 回掛けることになります。その影響が 1 ステップあたり 0.9 倍相当なら勾配は消え、1.1 倍相当なら発散します。</p>
+<div class="mb-row"><div class="mb">0.9^{50} \approx 0.005 \;\;(\text{勾配消失：学習が進まない})</div><div class="mb">1.1^{50} \approx 117 \;\;(\text{勾配爆発：値が発散する})</div></div>
+<ul>
+<li><strong>勾配消失（vanishing gradient）</strong>：遠い過去に向かう勾配がほぼ 0 になり、そこのパラメータが更新されない</li>
+<li><strong>勾配爆発（exploding gradient）</strong>：勾配が発散し、損失が NaN になる</li>
+</ul>
+<p>勾配爆発は、<strong>勾配クリッピング</strong>（勾配のノルムに上限を設ける）で比較的簡単に対処できます。上の図の「クリッピング」をオンにすると、上限で頭打ちになる様子を確認できます。</p>
+<pre><code class="python">torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)</code></pre>
+<p>厄介なのは勾配消失のほうです。値が静かに 0 に近づくだけなので、エラーも出ず、ただ「精度が上がらない」という形で現れます。</p>
+
+<aside class="math-box" aria-label="数式で見る：なぜ指数的に消えたり爆発したりするのか">
+<div class="math-head"><span class="math-kicker">数式で見る</span><b>なぜ指数的に消えたり爆発したりするのか</b></div>
+<p><span class="m">h_j = \tanh(a_j)</span>、<span class="m">a_j = W_x x_j + W_h h_{j-1} + b</span> とおきます。<span class="m">\tanh'(a) = 1 - \tanh^2(a)</span> なので、1 ステップ分のヤコビアンは次のとおりです（<span class="m">h_j^2</span> は要素ごとの 2 乗）。</p>
+<div class="mb">\frac{\partial h_j}{\partial h_{j-1}} = \operatorname{diag}\!\left(1 - h_j^{2}\right) W_h</div>
+<p><span class="m">0 \lt 1 - h_j^2 \le 1</span> なので、行列の大きさを最大特異値 <span class="m">\sigma_{\max}</span>（行列が最大で何倍に引き伸ばすか）で測ると、次の不等式が成り立ちます。</p>
+<div class="mb-row cont"><div class="mb">\left\| \frac{\partial h_t}{\partial h_k} \right\| \le \prod_{j=k+1}^{t} \left\| \operatorname{diag}\!\left(1 - h_j^2\right) \right\| \, \| W_h \|</div><div class="mb">\le \sigma_{\max}(W_h)^{\,t-k}</div></div>
+<p><span class="m">\sigma_{\max}(W_h) \lt 1</span> なら、さかのぼる距離 <span class="m">t - k</span> に対して<strong>指数的に 0 へ</strong>近づきます（勾配消失）。逆に <span class="m">\sigma_{\max}(W_h) \gt 1</span> だと、積が指数的に大きくなる<strong>可能性</strong>が生じます（勾配爆発）。上の図の倍率 <span class="m">w</span> は、この積を 1 次元に単純化したものです。</p>
+<p>勾配クリッピングは、全パラメータの勾配をまとめたベクトル <span class="m">g</span> のノルムが上限 <span class="m">\tau</span>（<code>max_norm</code>）を超えたときだけ、向きを保ったまま長さを縮めます。</p>
+<div class="mb">g \leftarrow g \cdot \min\!\left( 1,\ \frac{\tau}{\| g \|} \right)</div>
+</aside>
+
+<h3 id="s6-2-2">長期依存関係の学習が難しい理由</h3>
+<p>勾配消失の実害は、<strong>長期依存関係（long-term dependency）</strong> が学べないことです。次の文で空欄を埋めるには、50 単語前の「フランス」を覚えておく必要があります。</p>
+
+<div class="demo" id="d-longdep" aria-label="長い文を読み進めるにつれて、先頭付近の単語の記憶が薄れていく様子">
+  <div class="demo-head"><span class="demo-kicker">アニメーション</span><h4 class="demo-title">「フランス」の記憶は 50 単語後まで残るか</h4></div>
+  <div class="demo-stage"></div>
+</div>
+
+<p>素の RNN では勾配がそこまで届かず、直前の数単語しか参照できません。実用上、素の RNN が記憶できるのは <strong>せいぜい 10 ステップ程度</strong> と言われます。これでは文章も時系列も扱えません。</p>
+
+<h2 id="s6-3">6.3 LSTM と GRU</h2>
+
+<h3 id="s6-3-1">ゲート機構という発想</h3>
+<p>この問題を解決したのが <strong>LSTM（Long Short-Term Memory）</strong> です。1997 年に提案され、2010 年代の自然言語処理を支えました。アイデアは 2 つです。</p>
+<ol>
+<li><strong>セル状態（cell state）</strong> という、情報が素通りできる「ベルトコンベア」を用意する</li>
+<li><strong>ゲート</strong> で、そこに何を書き込み、何を捨て、何を読み出すかを学習で制御する</li>
+</ol>
+<p>セル状態の上では、情報は <strong>掛け算と足し算だけ</strong> で次の時刻へ運ばれます。重み行列を何度も掛けて tanh を通す素の RNN と違い、勾配が減衰しにくい経路です。CNN の残差接続（第5章）と同じく「勾配が素通りできる経路を作る」という発想です。</p>
+
+<h3 id="s6-3-2">忘却ゲート・入力ゲート・出力ゲート</h3>
+<p>各ゲートは、Sigmoid 関数（σ）で 0〜1 の値を出す小さなニューラルネットワークです。この値を掛けることで「どれだけ通すか」を調節します。<strong>0 に近いと遮断、1 に近いとそのまま通す</strong>。この開き具合を、データから学習します。</p>
+<table>
+<thead><tr><th>ゲート</th><th>役割</th><th>直感的な意味</th></tr></thead>
+<tbody>
+<tr><td><strong>忘却ゲート</strong> (forget)</td><td>セル状態の古い情報をどれだけ残すか</td><td>「主語が変わったので前の主語は忘れる」</td></tr>
+<tr><td><strong>入力ゲート</strong> (input)</td><td>新しい情報をどれだけ書き込むか</td><td>「新しい主語を記憶する」</td></tr>
+<tr><td><strong>出力ゲート</strong> (output)</td><td>セル状態のどこを今の出力に使うか</td><td>「今は主語の単複だけ使いたい」</td></tr>
+</tbody>
+</table>
+<p>1 ステップの中で情報がどう流れるかを、具体的な数値（「主語が単数から複数に変わった」場面のイメージ）で追ってみましょう。</p>
+
+<div class="demo" id="d-lstm" aria-label="LSTM セルの内部で情報が流れる様子">
+  <div class="demo-head"><span class="demo-kicker">アニメーション</span><h4 class="demo-title">LSTM セルの 1 ステップ</h4></div>
+  <div class="demo-stage">
+    <div class="svg-stage hscroll" style="--minw:560px" id="lstm-svg"></div>
+    <div class="eqs" id="lstm-eqs"></div>
+  </div>
+</div>
+
+<p>ゲートの値を自分で動かすと、セル状態と出力がどう変わるかを確かめられます。</p>
+
+<div class="demo" id="d-lstm-play" aria-label="LSTM のゲート値を操作する">
+  <div class="demo-head"><span class="demo-kicker">インタラクティブ</span><h4 class="demo-title">ゲートを開け閉めしてみる</h4></div>
+  <div class="demo-stage"></div>
+</div>
+
+<aside class="math-box" aria-label="数式で見る：LSTM で勾配が消えにくい理由">
+<div class="math-head"><span class="math-kicker">数式で見る</span><b>LSTM で勾配が消えにくい理由</b></div>
+<p>ゲートの <span class="m">\sigma</span> はシグモイド関数で、出力は必ず 0 と 1 の間に入ります。<span class="m">\odot</span> は要素ごとの積、<span class="m">[h_{t-1}, x_t]</span> は 2 つのベクトルの連結です。</p>
+<div class="mb-row"><div class="mb">\sigma(a) = \frac{1}{1 + e^{-a}} \in (0, 1)</div><div class="mb">C_t = f_t \odot C_{t-1} + i_t \odot \tilde{g}_t</div></div>
+<p>セル状態をまっすぐたどる経路だけに注目すると、1 ステップ分の微分は忘却ゲートの値そのものです。</p>
+<div class="mb-row"><div class="mb">\frac{\partial C_t}{\partial C_{t-1}} = \operatorname{diag}(f_t)</div><div class="mb">\Longrightarrow\quad \frac{\partial C_t}{\partial C_k} = \operatorname{diag}\!\left( f_t \odot f_{t-1} \odot \cdots \odot f_{k+1} \right)</div></div>
+<p>素の RNN の <span class="m">\operatorname{diag}(1 - h_j^2)\, W_h</span> と違い、この経路には重み行列も tanh の微分も掛かりません。忘却ゲートが 1 に近い値を学習すれば、積はほぼ 1 のまま保たれ、遠い過去まで勾配が届きます。</p>
+<p class="note">※ ゲート自体も <span class="m">h_{t-1}</span> を通じて過去に依存するため、厳密には他の経路を通る勾配もあります。長期の勾配を主に運ぶのが、このセル状態の直通経路です。</p>
+</aside>
+
+<p>PyTorch では 1 行で使えます。入出力の <strong>形状</strong> を押さえるのが実務上の要点です。</p>
+<pre><code class="python">import torch
+import torch.nn as nn
+
+lstm = nn.LSTM(input_size=64, hidden_size=128, num_layers=2, batch_first=True)
+
+# batch_first=True のとき入力は (バッチ, 系列長, 特徴次元)
+x = torch.randn(32, 20, 64)          # 32文, 各20トークン, 各トークン64次元
+
+out, (h_n, c_n) = lstm(x)
+
+print(out.shape)    # torch.Size([32, 20, 128])  全ステップの隠れ状態
+print(h_n.shape)    # torch.Size([2, 32, 128])   最終ステップの隠れ状態(層ごと)
+print(c_n.shape)    # torch.Size([2, 32, 128])   最終ステップのセル状態</code></pre>
+<div class="callout warn"><b>よくある誤解</b><code>batch_first=False</code>（PyTorch のデフォルト）だと入力は <code>(系列長, バッチ, 特徴次元)</code> になります。形状のバグの大半はここです。明示的に <code>batch_first=True</code> を指定するのが安全です。</div>
+<p>用途による使い分け：</p>
+<ul>
+<li>文全体を 1 つのベクトルにしたい（感情分析など）→ <code>h_n</code> の最終層を使う</li>
+<li>各トークンに出力が要る（品詞タグ付けなど）→ <code>out</code> を使う</li>
+</ul>
+<pre><code class="python"># many-to-one: 文の感情を2クラス分類
+class SentimentModel(nn.Module):
+    def __init__(self, vocab_size, emb=64, hid=128):
+        super().__init__()
+        self.emb = nn.Embedding(vocab_size, emb)
+        self.lstm = nn.LSTM(emb, hid, batch_first=True)
+        self.fc = nn.Linear(hid, 2)
+
+    def forward(self, ids):              # ids: (batch, seq_len)
+        out, (h_n, _) = self.lstm(self.emb(ids))
+        return self.fc(h_n[-1])          # 最終層の最終隠れ状態 -> (batch, 2)</code></pre>
+
+<h3 id="s6-3-3">GRU による簡略化</h3>
+<p><strong>GRU（Gated Recurrent Unit）</strong> は 2014 年に提案された、LSTM の簡略版です。セル状態をなくして隠れ状態 h だけにし、ゲートを 2 つに減らしました。</p>
+<ul>
+<li><strong>リセットゲート（r）</strong>：新しい候補を作るとき、過去の情報をどれだけ無視するか</li>
+<li><strong>更新ゲート（z）</strong>：LSTM の忘却ゲートと入力ゲートを 1 つにまとめたもの。「古い記憶」と「新しい候補」を <strong>z : (1 − z) の割合で混ぜる</strong></li>
+</ul>
+
+<div class="demo" id="d-gru" aria-label="GRU セルの内部で情報が流れる様子">
+  <div class="demo-head"><span class="demo-kicker">アニメーション</span><h4 class="demo-title">GRU セルの 1 ステップ</h4></div>
+  <div class="demo-stage">
+    <div class="svg-stage hscroll" style="--minw:560px" id="gru-svg"></div>
+    <div class="eqs" id="gru-eqs"></div>
+  </div>
+</div>
+
+<p class="note">※ 文献によって <span class="m">z</span> と <span class="m">1 - z</span> の役割が逆の表記もあります（PyTorch の公式ドキュメントは <span class="m">h_t = (1 - z_t) \odot n_t + z_t \odot h_{t-1}</span> で、<span class="m">z</span> が 1 に近いほど古い記憶を残す向き）。どちらも「混ぜる割合をゲートで決める」という仕組みは同じです。</p>
+
+<aside class="math-box" aria-label="数式で見る：GRU の更新は内分">
+<div class="math-head"><span class="math-kicker">数式で見る</span><b>GRU の更新は「内分」</b></div>
+<div class="mb-row"><div class="mb">h_t = (1 - z_t) \odot h_{t-1} + z_t \odot \tilde{h}_t</div><div class="mb">0 \lt z_t \lt 1</div></div>
+<p>要素ごとに見ると、<span class="m">h_t</span> は古い記憶 <span class="m">h_{t-1}</span> と新しい候補 <span class="m">\tilde{h}_t</span> を結ぶ線分を <span class="m">z_t : (1 - z_t)</span> に内分した点、つまり重み付き平均です。上の図の値なら次のとおりです。</p>
+<div class="mb">h_t = 0.3 \times 0.8 + 0.7 \times (-0.74) \approx -0.28</div>
+<p>また <span class="m">\partial h_t / \partial h_{t-1}</span> には <span class="m">\operatorname{diag}(1 - z_t)</span> という直通の項が含まれます。<span class="m">z_t</span> が 0 に近ければ記憶も勾配もそのまま通り、LSTM の忘却ゲート <span class="m">f_t</span> と同じ役割を果たします。</p>
+</aside>
+
+<p>LSTM と GRU の違いをまとめると次のとおりです。パラメータ数は PyTorch の <code>input_size=64, hidden_size=128</code>（1 層）で比べています。</p>
+
+<div class="demo" id="d-compare" aria-label="RNN・GRU・LSTM のパラメータ数の比較">
+  <div class="demo-head"><span class="demo-kicker">グラフ</span><h4 class="demo-title">RNN・GRU・LSTM のパラメータ数（入力 64・隠れ 128）</h4></div>
+  <div class="demo-stage"></div>
+</div>
+
+<p>入力の次元を <span class="m">D</span>、隠れ状態の次元を <span class="m">H</span> とすると、1 層あたりのパラメータ数は次のとおりです。GRU・LSTM は、ゲートと候補の数（3 組・4 組）だけ RNN と同じ大きさの重みを持ちます。</p>
+<div class="mb-row"><div class="mb">P_{\text{RNN}} = H(D + H) + 2H</div><div class="mb">P_{\text{GRU}} = 3\, P_{\text{RNN}}</div><div class="mb">P_{\text{LSTM}} = 4\, P_{\text{RNN}}</div></div>
+<p class="note">バイアスが <span class="m">2H</span> なのは、PyTorch が入力側と隠れ状態側で別々のバイアスを持つためです。<span class="m">D = 64,\ H = 128</span> なら <span class="m">P_{\text{RNN}} = 128 \times 192 + 256 = 24{,}832</span> です。</p>
+
+<table>
+<thead><tr><th></th><th>LSTM</th><th>GRU</th></tr></thead>
+<tbody>
+<tr><td>ゲート</td><td>3 つ（忘却 / 入力 / 出力）</td><td>2 つ（リセット / 更新）</td></tr>
+<tr><td>状態</td><td>セル状態 C と隠れ状態 h</td><td>隠れ状態 h のみ</td></tr>
+<tr><td>パラメータ</td><td>多い</td><td>LSTM の約 3/4、学習が速い</td></tr>
+</tbody>
+</table>
+<p>精度はタスクによりけりで、<strong>どちらが優れているとは一概に言えません</strong>。データが少ない、あるいは速度を優先したいなら GRU、というのが一般的な使い分けです。</p>
+<pre><code class="python">gru = nn.GRU(input_size=64, hidden_size=128, batch_first=True)
+out, h_n = gru(x)       # 戻り値が 2 つ（セル状態がない点が LSTM との違い）</code></pre>
+
+<h3 id="s6-3-4">双方向 RNN</h3>
+<p>素の RNN は「過去から未来」の一方向にしか進みません。しかし文章の理解では、後ろの文脈も役に立ちます。英語の <em>bank</em> は「銀行」とも「土手」とも読めますが、どちらなのかは後ろまで読まないと確定しません。</p>
+<p><strong>双方向 RNN（Bidirectional RNN）</strong> は、順方向と逆方向の 2 つの RNN を走らせ、各時刻の隠れ状態を連結します。</p>
+
+<div class="demo" id="d-bidir" aria-label="順方向と逆方向の RNN が同時に文を読み、各時刻で隠れ状態を連結する様子">
+  <div class="demo-head"><span class="demo-kicker">アニメーション</span><h4 class="demo-title">前から読む RNN ＋ 後ろから読む RNN</h4></div>
+  <div class="demo-stage svg-stage hscroll" style="--minw:560px"></div>
+</div>
+
+<pre><code class="python">bilstm = nn.LSTM(64, 128, batch_first=True, bidirectional=True)
+out, (h_n, c_n) = bilstm(torch.randn(32, 20, 64))
+print(out.shape)    # torch.Size([32, 20, 256])  ← 128 * 2（順+逆）</code></pre>
+<aside class="math-box" aria-label="数式で見る：双方向 RNN の式">
+<div class="math-head"><span class="math-kicker">数式で見る</span><b>双方向 RNN の式</b></div>
+<div class="mb-row"><div class="mb">\overrightarrow{h}_t = f\!\left( \overrightarrow{h}_{t-1},\, x_t \right)</div><div class="mb">\overleftarrow{h}_t = f'\!\left( \overleftarrow{h}_{t+1},\, x_t \right)</div><div class="mb">h_t = \left[\, \overrightarrow{h}_t \,;\, \overleftarrow{h}_t \,\right] \in \mathbb{R}^{2H}</div></div>
+<p><span class="m">f</span> と <span class="m">f'</span> は別々のパラメータを持つ RNN（LSTM）で、<span class="m">[\,\cdot\,;\,\cdot\,]</span> はベクトルの連結です。<span class="m">\overleftarrow{h}_t</span> は <span class="m">x_t, x_{t+1}, \dots, x_T</span> に依存するため、最後の入力 <span class="m">x_T</span> が届くまで計算を始められません。これがリアルタイム処理で使えない理由です。</p>
+</aside>
+<div class="callout warn"><b>制約</b>双方向にするには系列全体が事前に揃っている必要があります。リアルタイム音声認識のように、未来の入力がまだ存在しないタスクには使えません（上の図の「リアルタイム」で確認できます）。</div>
+
+<h2 id="s6-4">6.4 応用と限界</h2>
+
+<h3 id="s6-4-1">Seq2Seq と Encoder-Decoder</h3>
+<p>機械翻訳では、入力と出力の長さが一致しません（日本語 8 単語 → 英語 12 単語）。これを扱うのが <strong>Seq2Seq（Sequence-to-Sequence）</strong>、別名 <strong>Encoder-Decoder</strong> 構造です。Encoder が入力文全体を 1 本の固定長ベクトル（<strong>文脈ベクトル</strong>）に圧縮し、Decoder がそこから出力を 1 語ずつ生成します。</p>
+
+<div class="demo" id="d-seq2seq" aria-label="Encoder が入力文を文脈ベクトルに圧縮し、Decoder が 1 語ずつ翻訳を生成する様子">
+  <div class="demo-head"><span class="demo-kicker">アニメーション</span><h4 class="demo-title">「私は猫が好き」→ "I like cats"</h4></div>
+  <div class="demo-stage svg-stage hscroll" style="--minw:580px"></div>
+</div>
+
+<pre><code class="python"># 概念コード（Encoder の最終状態を Decoder の初期状態として渡す）
+_, (h, c) = encoder_lstm(src_emb)          # 入力文を読み切る
+out, _ = decoder_lstm(tgt_emb, (h, c))     # その記憶から出力を生成
+logits = fc(out)                            # 各ステップで語彙上の確率分布</code></pre>
+<aside class="math-box" aria-label="数式で見る：Seq2Seq が計算している確率">
+<div class="math-head"><span class="math-kicker">数式で見る</span><b>Seq2Seq が計算している確率</b></div>
+<p>Encoder は入力 <span class="m">x_1, \dots, x_T</span> を読み、最後の隠れ状態を文脈ベクトル <span class="m">c = h^{\text{enc}}_T</span> とします。Decoder は、出力文全体の確率を「1 語ずつの条件付き確率」の積に分解して扱います（<span class="m">y_{\lt t}</span> は時刻 <span class="m">t</span> より前に出力した単語）。</p>
+<div class="mb">P(y_1, \dots, y_{T'} \mid x_1, \dots, x_T) = \prod_{t=1}^{T'} P\!\left( y_t \mid y_{\lt t},\; c \right)</div>
+<p>学習では、正解の訳文に対する負の対数尤度（各時刻の交差エントロピーの和）を最小化します。このとき直前の単語には、モデルの出力ではなく正解の単語を入力するのが一般的です（teacher forcing）。</p>
+<div class="mb">L = -\sum_{t=1}^{T'} \log P\!\left( y_t \mid y_{\lt t},\; c \right)</div>
+<p>入力の長さ <span class="m">T</span> がいくら大きくても、<span class="m">c</span> の次元は固定です。これが次に見る「固定長ボトルネック」の数式上の意味です。</p>
+</aside>
+
+<p>主な応用先：</p>
+<table>
+<thead><tr><th>分野</th><th>タスク</th></tr></thead>
+<tbody>
+<tr><td>自然言語処理</td><td>機械翻訳、要約、対話応答、固有表現抽出</td></tr>
+<tr><td>音声</td><td>音声認識、音声合成</td></tr>
+<tr><td>時系列</td><td>需要予測、株価予測、異常検知、センサーデータ解析</td></tr>
+</tbody>
+</table>
+
+<h3 id="s6-4-2">RNN 系の 2 つの壁</h3>
+<p>RNN 系アーキテクチャは大きな成果を上げましたが、2 つの構造的な限界を抱えていました。</p>
+<p><strong>壁1：固定長ボトルネック</strong> — Seq2Seq では、入力文がどれだけ長くても、1 本の固定長ベクトルに押し込められます。</p>
+
+<div class="demo" id="d-bottleneck" aria-label="入力文が長くなるほど、固定長の文脈ベクトルに 1 単語あたり割ける容量が減る様子">
+  <div class="demo-head"><span class="demo-kicker">インタラクティブ</span><h4 class="demo-title">入力文を長くすると、1 単語あたりの「容量」は？</h4></div>
+  <div class="demo-stage"></div>
+</div>
+
+<p>実際、入力文が長くなるほど翻訳精度が落ちることが知られていました。</p>
+<p><strong>壁2：逐次処理ゆえの並列化の壁</strong> — こちらがより深刻です。RNN は <span class="m">h_t</span> を計算するのに <span class="m">h_{t-1}</span> が必要なため、<strong>原理的に時間方向の並列計算ができません</strong>。</p>
+
+<div class="demo" id="d-parallel" aria-label="RNN の逐次処理と並列処理の速さの比較">
+  <div class="demo-head"><span class="demo-kicker">アニメーション</span><h4 class="demo-title">GPU のコアが何千あっても、RNN は 1 つずつ</h4></div>
+  <div class="demo-stage"></div>
+</div>
+
+<p>GPU の性能は「大量の計算を同時に行う」ことで発揮されます。RNN はその強みを活かせないため、モデルを大きくしても、データを増やしても、学習時間が線形に伸びてしまいます。系列長を <span class="m">T</span> とすると、RNN の 1 層は依存の鎖 <span class="m">h_1 \to h_2 \to \cdots \to h_T</span> に沿って <span class="m">O(T)</span> 回の逐次ステップを必要とします。畳み込みや Transformer の 1 層は全位置を同時に計算できるので、逐次ステップ数は <span class="m">O(1)</span> です。</p>
+<div class="callout tip"><b>実務での位置づけ</b>この「並列化できない」という制約こそが、2017 年の Transformer 登場の直接的な動機でした。Transformer は再帰構造を捨て、系列の全要素を一度に処理することで、GPU をフルに使った大規模学習を可能にしました。現在の LLM が存在するのはこのためです。<strong>その仕組みは第7章で扱います。</strong></div>
+<p>なお RNN 系が完全に不要になったわけではありません。小規模な時系列予測や、計算資源が限られる組込み環境では、軽量な LSTM / GRU が今も現役です。</p>
+
+<h2 id="s6-summary">まとめ</h2>
+<p>本章では、系列データを扱う RNN 系のアーキテクチャを学びました：</p>
+<ul class="summary-list">
+<li><strong>RNN は隠れ状態を持ち回ることで、可変長の系列と文脈を扱える</strong></li>
+<li><strong>同じ重みを繰り返し掛けるため、勾配消失・勾配爆発が起き、長期依存が学べない</strong></li>
+<li><strong>LSTM はセル状態とゲート機構で情報の取捨選択を学習し、長期記憶を実現した</strong></li>
+<li><strong>GRU は LSTM の簡略版。双方向 RNN は前後の文脈を同時に使う</strong></li>
+<li><strong>Seq2Seq の固定長ボトルネックと、逐次処理による並列化の壁が RNN の限界</strong></li>
+</ul>
+<p>次章では、この限界を突破し、現代の生成 AI の基盤となった Attention と Transformer を扱います。</p>
+
+<h2 id="s6-exercises">演習問題</h2>
+
+<div class="exercise">
+<p><strong>1.</strong> <code>nn.LSTM(input_size=100, hidden_size=256, num_layers=2, batch_first=True)</code> に形状 <code>(16, 30, 100)</code> のテンソルを入力しました。<code>out</code>, <code>h_n</code>, <code>c_n</code> それぞれの形状を答えてください。</p>
+<details><summary>解答例を見る</summary>
+<p><code>out</code>: <code>(16, 30, 256)</code>（最終層の全ステップの隠れ状態）<br><code>h_n</code>: <code>(2, 16, 256)</code>（層数, バッチ, 隠れ次元）<br><code>c_n</code>: <code>(2, 16, 256)</code>。<code>h_n</code> と <code>c_n</code> は <code>batch_first=True</code> でも先頭が層数になる点に注意。</p>
+</details>
+</div>
+
+<div class="exercise">
+<p><strong>2.</strong> 素の RNN で長期依存関係が学習できない理由を、BPTT における勾配の伝わり方に触れて説明してください。また、LSTM がそれをどう解決したかも述べてください。</p>
+<details><summary>解答例を見る</summary>
+<p>BPTT では誤差を過去へ伝えるたびに同じ重み行列（と tanh の微分）が掛け算されるため、影響が 1 より小さければ指数的に 0 へ（勾配消失）、大きければ発散する（勾配爆発）。その結果、遠い過去の入力に関わるパラメータがほとんど更新されず、長期依存が学べない。LSTM はセル状態という「掛け算（忘却ゲート）と足し算だけで次へ運ばれる経路」を設け、忘却ゲートが 1 に近ければ情報と勾配がほぼ減衰せずに遠くまで届くようにした。何を残し何を書き込むかはゲートが学習する。</p>
+</details>
+</div>
+
+<div class="exercise">
+<p><strong>3.</strong> 次の 3 つのタスクについて、双方向 RNN が使えるかどうかを理由とともに判定してください。</p>
+<ul>
+<li>(a) レビュー文全体の評価が星いくつかを予測する</li>
+<li>(b) 通話中の音声をリアルタイムで文字起こしする</li>
+<li>(c) 文章中の各単語に品詞タグを付ける</li>
+</ul>
+<details><summary>解答例を見る</summary>
+<p>(a) 使える：レビュー文は全体が事前に揃っている。<br>(b) 使えない：リアルタイム処理では未来の音声がまだ存在せず、逆方向の RNN を走らせられない（全体が届くまで待つと遅延が大きくなる）。<br>(c) 使える：文全体が揃っており、各単語の品詞の判定には後ろの文脈も役立つ。</p>
+</details>
+</div>
+
+<div class="exercise">
+<p><strong>4.</strong> 「RNN は GPU の性能を活かしきれない」と言われます。その理由を、CNN との違いに触れて説明してください。</p>
+<details><summary>解答例を見る</summary>
+<p>RNN は <span class="m">h_t</span> の計算に <span class="m">h_{t-1}</span> が必要なため、時間方向に 1 ステップずつ順番に計算するしかなく、系列長に比例した回数だけ待たされる。CNN の畳み込みは各位置の計算が互いに独立しているので、全位置を同時に計算できる。GPU は大量の独立な計算を同時に行うことで性能を発揮するため、逐次依存のある RNN ではコアの大部分が遊んでしまう。</p>
+</details>
+</div>
+
+</article>
+<nav class="pager" aria-label="前後の章"></nav>
+</main>
+<aside class="contents"><div class="nav-title">このページの目次</div><nav id="toc" aria-label="ページ内目次"></nav></aside>
+</div>
+</body>
+</html>
